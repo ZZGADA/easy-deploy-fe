@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { List, Typography, Card, Space, Tag, Spin, message, Tree, Row, Col } from 'antd';
 import { GithubOutlined, BranchesOutlined, ClockCircleOutlined, UserOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
+import MarkdownPreview from '@uiw/react-markdown-preview';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import 'github-markdown-css'; // 添加 GitHub 风格的 Markdown 样式
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 const { Title, Text } = Typography;
 const { DirectoryTree } = Tree;
@@ -54,8 +54,9 @@ interface FileNode {
 
 interface FileContent {
   content: string;
-  type: 'markdown' | 'code';
+  type: 'markdown' | 'code' | 'image';
   language?: string;
+  raw_url?: string;
 }
 
 const Repositories: React.FC = () => {
@@ -72,6 +73,7 @@ const Repositories: React.FC = () => {
     content: '',
     type: 'markdown'
   });
+  const [fileContentLoading, setFileContentLoading] = useState(false);
 
   const USERS = 'ZZGADA';
 
@@ -284,6 +286,14 @@ const Repositories: React.FC = () => {
       'scala': 'scala',
       'r': 'r',
       'dart': 'dart',
+      'png': 'image',
+      'jpg': 'image',
+      'jpeg': 'image',
+      'gif': 'image',
+      'svg': 'image',
+      'webp': 'image',
+      'bmp': 'image',
+      'ico': 'image'
     };
     return languageMap[extension] || 'text';
   };
@@ -291,22 +301,35 @@ const Repositories: React.FC = () => {
   const fetchFileContent = async (path: string) => {
     if (!selectedRepo) return;
     
+    setFileContentLoading(true);
     try {
       const response = await githubApi.get(
         `/repos/${USERS}/${selectedRepo.name}/contents/${path}`
       );
       
-      const content = decodeURIComponent(escape(atob(response.data.content)));
-      const isMarkdown = path.toLowerCase().endsWith('.md');
+      const fileType = getFileLanguage(path);
       
-      setFileContent({
-        content,
-        type: isMarkdown ? 'markdown' : 'code',
-        language: getFileLanguage(path)
-      });
+      if (fileType === 'image') {
+        setFileContent({
+          content: '',
+          type: 'image',
+          raw_url: response.data.download_url
+        });
+      } else {
+        const content = decodeURIComponent(escape(atob(response.data.content)));
+        const isMarkdown = path.toLowerCase().endsWith('.md');
+        
+        setFileContent({
+          content,
+          type: isMarkdown ? 'markdown' : 'code',
+          language: fileType
+        });
+      }
     } catch (error) {
       console.error('Error fetching file content:', error);
       message.error('获取文件内容失败');
+    } finally {
+      setFileContentLoading(false);
     }
   };
 
@@ -328,18 +351,53 @@ const Repositories: React.FC = () => {
         }
       );
       
-      const lastCommit = commitResponse.data[0];
-      info.node.lastCommit = {
-        message: lastCommit.commit.message,
-        date: lastCommit.commit.author.date,
-        author: lastCommit.commit.author.name
-      };
-      
-      setFileTree([...fileTree]);
+      if (commitResponse.data && commitResponse.data.length > 0) {
+        const lastCommit = commitResponse.data[0];
+        const commitInfo = {
+          message: lastCommit.commit.message,
+          date: lastCommit.commit.author.date,
+          author: lastCommit.commit.author.name
+        };
+
+        // 更新文件树中的提交信息
+        const updateFileTreeWithCommit = (nodes: FileNode[]): FileNode[] => {
+          return nodes.map(node => {
+            if (node.path === info.node.path) {
+              return { ...node, lastCommit: commitInfo };
+            }
+            if (node.children && node.children.length > 0) {
+              return { ...node, children: updateFileTreeWithCommit(node.children) };
+            }
+            return node;
+          });
+        };
+
+        const updatedTree = updateFileTreeWithCommit([...fileTree]);
+        setFileTree(updatedTree);
+
+        // 直接更新当前选中文件的提交信息
+        const currentNode = info.node;
+        currentNode.lastCommit = commitInfo;
+      }
     } catch (error) {
       console.error('Error fetching file commit:', error);
       message.error('获取文件提交信息失败');
     }
+  };
+
+  const findFileNode = (path: string, nodes: FileNode[]): FileNode | undefined => {
+    for (const node of nodes) {
+      if (node.path === path) {
+        return node;
+      }
+      if (node.children && node.children.length > 0) {
+        const found = findFileNode(path, node.children);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return undefined;
   };
 
   const formatDate = (dateString: string) => {
@@ -347,10 +405,104 @@ const Repositories: React.FC = () => {
   };
 
   const renderFileContent = () => {
-    if (fileContent.type === 'markdown') {
+    if (fileContent.type === 'image') {
       return (
-        <div className="markdown-body">
-          <ReactMarkdown>{fileContent.content}</ReactMarkdown>
+        <div style={{ 
+          padding: '20px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <img 
+            src={fileContent.raw_url}
+            alt={selectedFile}
+            style={{
+              maxWidth: '100%',
+              maxHeight: 'calc(100vh - 400px)',
+              objectFit: 'contain'
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (fileContent.type === 'markdown') {
+      // 处理图片 URL
+      const processImageUrl = (url: string) => {
+        if (url.startsWith('http')) {
+          return url;
+        }
+        
+        // 处理相对路径的图片
+        if (url.startsWith('./')) {
+          url = url.substring(2);
+        }
+        if (url.startsWith('/')) {
+          url = url.substring(1);
+        }
+        
+        // 获取当前文件所在目录
+        const currentDir = selectedFile.split('/').slice(0, -1).join('/');
+        const imagePath = currentDir ? `${currentDir}/${url}` : url;
+        
+        return `https://raw.githubusercontent.com/${USERS}/${selectedRepo?.name}/${selectedRepo?.default_branch}/${imagePath}`;
+      };
+
+      return (
+        <div style={{ padding: '20px' }}>
+          <MarkdownPreview 
+            source={fileContent.content}
+            style={{
+              backgroundColor: 'transparent',
+              fontSize: '14px'
+            }}
+            wrapperElement={{
+              "data-color-mode": "light"
+            }}
+            components={{
+              table: props => (
+                <table
+                  {...props}
+                  style={{
+                    borderCollapse: 'collapse',
+                    width: '100%',
+                    margin: '16px 0',
+                    border: '1px solid #e8e8e8'
+                  }}
+                />
+              ),
+              th: props => (
+                <th
+                  {...props}
+                  style={{
+                    backgroundColor: '#fafafa',
+                    border: '1px solid #e8e8e8',
+                    padding: '8px 16px'
+                  }}
+                />
+              ),
+              td: props => (
+                <td
+                  {...props}
+                  style={{
+                    border: '1px solid #e8e8e8',
+                    padding: '8px 16px'
+                  }}
+                />
+              ),
+              img: ({ src, alt, ...props }) => (
+                <img
+                  src={processImageUrl(src || '')}
+                  alt={alt}
+                  style={{
+                    maxWidth: '100%',
+                    height: 'auto'
+                  }}
+                  {...props}
+                />
+              )
+            }}
+          />
         </div>
       );
     }
@@ -432,47 +584,158 @@ const Repositories: React.FC = () => {
               </Space>
             </Col>
             
-            <Col span={12} style={{ maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}>
-              <Title level={5}>项目目录结构</Title>
-              {fileTreeLoading ? (
-                <Spin />
-              ) : (
-                <DirectoryTree
-                  treeData={fileTree}
-                  onSelect={handleFileSelect}
-                />
-              )}
-            </Col>
-            
-            <Col span={12} style={{ padding: '0 16px' }}>
-              <Title level={5}>{selectedFile || 'README.md'}</Title>
-              <Card 
-                style={{ 
-                  marginTop: '16px',
-                  maxHeight: 'calc(100vh - 250px)',
-                  overflowY: 'auto'
-                }}
-              >
-                {renderFileContent()}
-              </Card>
-              
-              {selectedFile && (
-                <div style={{ marginTop: '16px' }}>
-                  <Title level={5}>文件信息</Title>
-                  <Card>
-                    <Space direction="vertical">
-                      <Text strong>路径: {selectedFile}</Text>
-                      {fileTree.find(f => f.path === selectedFile)?.lastCommit && (
-                        <>
-                          <Text>最后提交信息: {fileTree.find(f => f.path === selectedFile)?.lastCommit?.message}</Text>
-                          <Text>提交作者: {fileTree.find(f => f.path === selectedFile)?.lastCommit?.author}</Text>
-                          <Text>提交时间: {formatDate(fileTree.find(f => f.path === selectedFile)?.lastCommit?.date || '')}</Text>
-                        </>
+            <Col span={24}>
+              <PanelGroup direction="horizontal" style={{ height: 'calc(100vh - 150px)' }}>
+                <Panel defaultSize={40} minSize={30}>
+                  <div style={{ 
+                    height: '100%',
+                    padding: '16px',
+                    backgroundColor: '#fff',
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden'
+                  }}>
+                    <Title level={5} style={{ flex: 'none' }}>项目目录结构</Title>
+                    {fileTreeLoading ? (
+                      <Spin />
+                    ) : (
+                      <div style={{
+                        flex: 1,
+                        overflow: 'auto',
+                        marginTop: '16px',
+                        paddingRight: '4px'
+                      }}>
+                        <DirectoryTree
+                          treeData={fileTree}
+                          onSelect={handleFileSelect}
+                          height={window.innerHeight - 250}
+                          style={{
+                            overflow: 'overlay'
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </Panel>
+
+                <PanelResizeHandle style={{ 
+                  width: '8px', 
+                  background: '#f0f0f0',
+                  cursor: 'col-resize',
+                  margin: '0 -1px',
+                  position: 'relative'
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '2px',
+                    height: '20px',
+                    background: '#d9d9d9'
+                  }} />
+                </PanelResizeHandle>
+
+                <Panel defaultSize={60} minSize={30}>
+                  <div style={{ 
+                    height: '100%', 
+                    padding: '0 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden'
+                  }}>
+                    <Card 
+                      title={
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Title level={5} style={{ margin: 0 }}>文件内容</Title>
+                          {selectedFile && (
+                            <Tag 
+                              color="blue" 
+                              style={{ 
+                                padding: '4px 8px',
+                                marginTop: '8px',
+                                width: 'fit-content'
+                              }}
+                            >
+                              {selectedFile}
+                            </Tag>
+                          )}
+                        </Space>
+                      }
+                      style={{ 
+                        flex: 1,
+                        marginBottom: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden'
+                      }}
+                      bodyStyle={{
+                        flex: 1,
+                        overflow: 'auto',
+                        padding: '24px 24px 0'
+                      }}
+                    >
+                      {fileContentLoading ? (
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'center', 
+                          alignItems: 'center',
+                          height: '100%'
+                        }}>
+                          <Spin tip="加载文件内容..." />
+                        </div>
+                      ) : (
+                        <div style={{ height: '100%', overflow: 'auto' }}>
+                          {renderFileContent()}
+                        </div>
                       )}
-                    </Space>
-                  </Card>
-                </div>
-              )}
+                    </Card>
+                    
+                    {selectedFile && (
+                      <Card
+                        title={
+                          <Space>
+                            <Text strong>文件信息</Text>
+                            <Tag icon={<UserOutlined />} color="blue">
+                              {findFileNode(selectedFile, fileTree)?.lastCommit?.author || '未知作者'}
+                            </Tag>
+                          </Space>
+                        }
+                        style={{
+                          marginBottom: '16px'
+                        }}
+                      >
+                        {findFileNode(selectedFile, fileTree)?.lastCommit ? (
+                          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                            <div>
+                              <Text type="secondary">提交注释：</Text>
+                              <div style={{ 
+                                marginTop: '8px',
+                                padding: '8px',
+                                backgroundColor: '#f5f5f5',
+                                borderRadius: '4px',
+                                whiteSpace: 'pre-wrap'
+                              }}>
+                                {findFileNode(selectedFile, fileTree)?.lastCommit?.message}
+                              </div>
+                            </div>
+                            <div>
+                              <Text type="secondary">提交时间：</Text>
+                              <div style={{ marginTop: '4px' }}>
+                                {formatDate(findFileNode(selectedFile, fileTree)?.lastCommit?.date || '')}
+                              </div>
+                            </div>
+                          </Space>
+                        ) : (
+                          <Text type="secondary">暂无提交信息</Text>
+                        )}
+                      </Card>
+                    )}
+                  </div>
+                </Panel>
+              </PanelGroup>
             </Col>
           </Row>
         ) : (
