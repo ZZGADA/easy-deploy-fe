@@ -1,104 +1,139 @@
 import React, { useState } from 'react';
-import { TextField, Button, Container, Typography, Box, Alert } from '@mui/material';
+import { Form, Input, Button, Card, message, Steps } from 'antd';
+import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/api';
 
-const Register = () => {
+const { Step } = Steps;
+
+const Register: React.FC = () => {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [step, setStep] = useState(1);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const onFinish = async (values: any) => {
+    setLoading(true);
     try {
-      const response = await authService.register({ email, password });
-      setMessage(response.data.message);
-      setStep(2);
-    } catch (err: any) {
-      setError(err.response?.data?.error || '注册失败');
+      await authService.register(values);
+      setEmail(values.email);
+      setPassword(values.password);
+      setStep(1);
+      message.success('验证码已发送到您的邮箱');
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '注册失败');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCompleteRegistration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const onVerifyCode = async (values: any) => {
+    setLoading(true);
     try {
-      const response = await authService.completeRegistration({
+      await authService.completeRegistration({
         email,
         password,
-        code: verificationCode,
+        code: values.code,
       });
-      setMessage(response.data.message);
-      // 注册成功后可以跳转到登录页面
-    } catch (err: any) {
-      setError(err.response?.data?.error || '验证失败');
+      message.success('注册成功，请登录');
+      navigate('/login');
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '验证失败');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h5">
-          注册
-        </Typography>
-        {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
-        {message && <Alert severity="success" sx={{ mt: 2, width: '100%' }}>{message}</Alert>}
-        
-        {step === 1 ? (
-          <Box component="form" onSubmit={handleRegister} sx={{ mt: 3, width: '100%' }}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              label="邮箱"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              label="密码"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              helperText="密码必须包含大小写字母和特殊字符"
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+    <div style={{ maxWidth: 400, margin: '100px auto' }}>
+      <Card title="用户注册">
+        <Steps current={step} style={{ marginBottom: 24 }}>
+          <Step title="填写信息" />
+          <Step title="验证邮箱" />
+        </Steps>
+
+        {step === 0 ? (
+          <Form
+            form={form}
+            name="register"
+            onFinish={onFinish}
+            autoComplete="off"
+          >
+            <Form.Item
+              name="email"
+              rules={[
+                { required: true, message: '请输入邮箱' },
+                { type: 'email', message: '请输入有效的邮箱地址' },
+              ]}
             >
-              获取验证码
-            </Button>
-          </Box>
+              <Input
+                prefix={<MailOutlined />}
+                placeholder="邮箱"
+                size="large"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="password"
+              rules={[
+                { required: true, message: '请输入密码' },
+                { min: 6, message: '密码长度不能小于6位' },
+              ]}
+            >
+              <Input.Password
+                prefix={<LockOutlined />}
+                placeholder="密码"
+                size="large"
+              />
+            </Form.Item>
+
+            <Form.Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                size="large"
+              >
+                注册
+              </Button>
+            </Form.Item>
+          </Form>
         ) : (
-          <Box component="form" onSubmit={handleCompleteRegistration} sx={{ mt: 3, width: '100%' }}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              label="验证码"
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value)}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+          <Form
+            form={form}
+            name="verify"
+            onFinish={onVerifyCode}
+            autoComplete="off"
+          >
+            <Form.Item
+              name="code"
+              rules={[{ required: true, message: '请输入验证码' }]}
             >
-              完成注册
-            </Button>
-          </Box>
+              <Input
+                prefix={<MailOutlined />}
+                placeholder="验证码"
+                size="large"
+              />
+            </Form.Item>
+
+            <Form.Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                size="large"
+              >
+                验证
+              </Button>
+            </Form.Item>
+          </Form>
         )}
-      </Box>
-    </Container>
+      </Card>
+    </div>
   );
 };
 

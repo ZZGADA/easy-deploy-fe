@@ -1,71 +1,82 @@
-import React, { useState } from 'react';
-import { TextField, Button, Container, Typography, Box, Alert, Link } from '@mui/material';
-import { authService } from '../services/api';
+import React from 'react';
+import { Form, Input, Button, Card, message } from 'antd';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { authService } from '../services/api';
 
-const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+const Login: React.FC = () => {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = React.useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const onFinish = async (values: any) => {
+    setLoading(true);
     try {
-      const response = await authService.login({ email, password });
-      // 保存 token 到 localStorage
-      localStorage.setItem('token', response.data.token);
-      // 登录成功后跳转到首页
-      navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.error || '登录失败');
+      const response = await authService.login(values);
+      console.log('Login response:', response);
+      if (response && response.token) {
+        message.success(response.message || '登录成功');
+        localStorage.setItem('token', response.token);
+        window.location.href = '/easy-deploy/profile';
+      } else {
+        message.error('登录失败：未获取到token');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      message.error(error.response?.data?.message || '登录失败');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h5">
-          登录
-        </Typography>
-        {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
-        
-        <Box component="form" onSubmit={handleLogin} sx={{ mt: 3, width: '100%' }}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="邮箱"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="密码"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            sx={{ mt: 3, mb: 2 }}
+    <div style={{ maxWidth: 400, margin: '100px auto' }}>
+      <Card title="用户登录">
+        <Form
+          form={form}
+          name="login"
+          onFinish={onFinish}
+          autoComplete="off"
+        >
+          <Form.Item
+            name="email"
+            rules={[
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
+            ]}
           >
-            登录
-          </Button>
-          <Box sx={{ textAlign: 'center' }}>
-            <Link href="/register" variant="body2">
-              还没有账号？立即注册
-            </Link>
-          </Box>
-        </Box>
-      </Box>
-    </Container>
+            <Input
+              prefix={<UserOutlined />}
+              placeholder="邮箱"
+              size="large"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="password"
+            rules={[{ required: true, message: '请输入密码' }]}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="密码"
+              size="large"
+            />
+          </Form.Item>
+
+          <Form.Item>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              block
+              size="large"
+            >
+              登录
+            </Button>
+          </Form.Item>
+        </Form>
+      </Card>
+    </div>
   );
 };
 
