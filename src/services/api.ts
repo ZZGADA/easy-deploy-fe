@@ -84,12 +84,14 @@ export interface DeveloperTokenRequest {
   developer_token: string;
   expire_time: string;
   comment: string;
+  repository_name: string;
 }
 
 export interface DeveloperTokenResponse {
   developer_token: string;
   developer_token_comment: string;
   developer_token_expire_time: string;
+  developer_repository_name: string;
 }
 
 // GitHub 绑定相关接口

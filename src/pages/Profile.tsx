@@ -58,6 +58,7 @@ const Profile: React.FC = () => {
           developer_token: response.data.developer_token,
           comment: response.data.developer_token_comment,
           expire_time: response.data.developer_token_expire_time ? dayjs(response.data.developer_token_expire_time) : undefined,
+          repository_name: response.data.developer_repository_name,
         });
       }
     } catch (error) {
@@ -93,8 +94,10 @@ const Profile: React.FC = () => {
     try {
       setTokenLoading(true);
       const data = {
-        ...values,
+        developer_token: values.developer_token,
         expire_time: dayjs(values.expire_time).format('YYYY-MM-DD HH:mm:ss'),
+        comment: values.comment,
+        repository_name: values.repository_name
       };
       
       if (tokenInfo) {
@@ -125,6 +128,7 @@ const Profile: React.FC = () => {
         developer_token: tokenInfo.developer_token,
         comment: tokenInfo.developer_token_comment,
         expire_time: tokenInfo.developer_token_expire_time ? dayjs(tokenInfo.developer_token_expire_time) : undefined,
+        repository_name: tokenInfo.developer_repository_name,
       });
     }
   };
@@ -205,7 +209,7 @@ const Profile: React.FC = () => {
           <>
             <Divider />
             <Card 
-              title="GitHub 开发者令牌" 
+              title="GitHub 开发者信息" 
               loading={tokenLoading}
               extra={
                 tokenInfo && !isEditing ? (
@@ -221,19 +225,31 @@ const Profile: React.FC = () => {
                 onFinish={onFinish}
               >
                 <Form.Item
-                  label="开发者令牌"
-                  name="developer_token"
-                  rules={[{ required: true, message: '请输入开发者令牌' }]}
+                  label="仓库名称"
+                  name="repository_name"
+                  rules={[{ required: true, message: '请输入你的仓库名称【不是项目仓库名称，是根仓库名称】' }]}
                 >
-                  <Input.Password 
-                    placeholder="请输入您的 GitHub 开发者令牌" 
+                  <Input 
+                    placeholder="请输入您的 GitHub 仓库名称" 
                     disabled={isFieldDisabled}
                     style={{ backgroundColor: fieldBackgroundColor }}
                   />
                 </Form.Item>
 
                 <Form.Item
-                  label="过期时间"
+                  label="开发者token"
+                  name="developer_token"
+                  rules={[{ required: true, message: '请输入开发者token' }]}
+                >
+                  <Input.Password 
+                    placeholder="请输入您的 GitHub开发者 token" 
+                    disabled={isFieldDisabled}
+                    style={{ backgroundColor: fieldBackgroundColor }}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  label="开发者token过期时间"
                   name="expire_time"
                   rules={[{ required: true, message: '请选择过期时间' }]}
                 >

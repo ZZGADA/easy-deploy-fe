@@ -77,9 +77,8 @@ const Repositories: React.FC = () => {
   });
   const [fileContentLoading, setFileContentLoading] = useState(false);
   const [developerToken, setDeveloperToken] = useState<string | null>(null);
+  const [repositoryName, setRepositoryName] = useState<string | null>(null);
   const navigate = useNavigate();
-
-  const USERS = 'ZZGADA';
 
   const githubApi = axios.create({
     baseURL: 'https://api.github.com',
@@ -94,10 +93,10 @@ const Repositories: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (developerToken) {
+    if (developerToken && repositoryName) {
       fetchRepositories();
     }
-  }, [developerToken]);
+  }, [developerToken, repositoryName]);
 
   useEffect(() => {
     if (selectedRepo) {
@@ -110,12 +109,13 @@ const Repositories: React.FC = () => {
     try {
       const response = await githubService.queryDeveloperToken();
       if (response.code === 200) {
-        if (!response.data || !response.data.developer_token) {
-          message.error('请先在"个人中心"完成 GitHub 账号绑定并设置开发者令牌');
+        if (!response.data || !response.data.developer_token || !response.data.developer_repository_name) {
+          message.error('请先在"个人中心"完成 GitHub 账号绑定并设置开发者令牌和仓库名称');
           navigate('/easy-deploy/profile');
           return;
         }
         setDeveloperToken(response.data.developer_token);
+        setRepositoryName(response.data.developer_repository_name);
       }
     } catch (error) {
       message.error('获取开发者令牌失败');
@@ -125,7 +125,7 @@ const Repositories: React.FC = () => {
 
   const fetchRepositories = async () => {
     try {
-      const response = await githubApi.get(`/users/${USERS}/repos`);
+      const response = await githubApi.get(`/users/${repositoryName}/repos`);
       setRepositories(response.data);
     } catch (error: any) {
       console.error('Error fetching repositories:', error);
@@ -138,14 +138,14 @@ const Repositories: React.FC = () => {
   const fetchBranches = async (repoName: string) => {
     setBranchLoading(true);
     try {
-      const branchesResponse = await githubApi.get(`/repos/${USERS}/${repoName}/branches`);
+      const branchesResponse = await githubApi.get(`/repos/${repositoryName}/${repoName}/branches`);
       const branchesData = branchesResponse.data;
 
       const branchesWithCommits = await Promise.all(
         branchesData.map(async (branch: any) => {
           try {
             const commitResponse = await githubApi.get(
-              `/repos/${USERS}/${repoName}/commits/${branch.commit.sha}`
+              `/repos/${repositoryName}/${repoName}/commits/${branch.commit.sha}`
             );
             return {
               ...branch,
@@ -175,12 +175,12 @@ const Repositories: React.FC = () => {
     setFileTreeLoading(true);
     try {
       // 获取默认分支
-      const repoResponse = await githubApi.get(`/repos/${USERS}/${repoName}`);
+      const repoResponse = await githubApi.get(`/repos/${repositoryName}/${repoName}`);
       const defaultBranch = repoResponse.data.default_branch;
 
       // 使用 recursive 参数一次性获取所有文件
       const response = await githubApi.get(
-        `/repos/${USERS}/${repoName}/git/trees/${defaultBranch}`,
+        `/repos/${repositoryName}/${repoName}/git/trees/${defaultBranch}`,
         { params: { recursive: 1 } }
       );
 
@@ -265,7 +265,7 @@ const Repositories: React.FC = () => {
     
     try {
       const response = await githubApi.get(
-        `/repos/${USERS}/${selectedRepo.name}/commits`,
+        `/repos/${repositoryName}/${selectedRepo.name}/commits`,
         { params: { path } }
       );
       
@@ -331,7 +331,7 @@ const Repositories: React.FC = () => {
     setFileContentLoading(true);
     try {
       const response = await githubApi.get(
-        `/repos/${USERS}/${selectedRepo.name}/contents/${path}`
+        `/repos/${repositoryName}/${selectedRepo.name}/contents/${path}`
       );
       
       const fileType = getFileLanguage(path);
@@ -369,7 +369,7 @@ const Repositories: React.FC = () => {
     // 获取提交信息
     try {
       const commitResponse = await githubApi.get(
-        `/repos/${USERS}/${selectedRepo?.name}/commits`,
+        `/repos/${repositoryName}/${selectedRepo?.name}/commits`,
         { 
           params: { 
             path: info.node.path,
@@ -472,7 +472,7 @@ const Repositories: React.FC = () => {
         const currentDir = selectedFile.split('/').slice(0, -1).join('/');
         const imagePath = currentDir ? `${currentDir}/${url}` : url;
         
-        return `https://raw.githubusercontent.com/${USERS}/${selectedRepo?.name}/${selectedRepo?.default_branch}/${imagePath}`;
+        return `https://raw.githubusercontent.com/${repositoryName}/${selectedRepo?.name}/${selectedRepo?.default_branch}/${imagePath}`;
       };
 
       return (
