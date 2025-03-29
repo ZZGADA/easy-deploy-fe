@@ -69,25 +69,46 @@ export const authService = {
   }
 };
 
+// GitHub 用户信息接口
+export interface GithubUserInfo {
+  bound: boolean;
+  avatar_url?: string;
+  email?: string;
+  github_id?: number;
+  id?: number;
+  name?: string;
+}
+
 // GitHub 绑定相关接口
 export const githubService = {
   // 获取 GitHub OAuth URL
   getOAuthUrl: () => {
     const clientId = process.env.REACT_APP_GITHUB_CLIENT_ID;
-    const token = localStorage.getItem('token'); // 获取用户 token
-    const redirectUri = encodeURIComponent(`${process.env.REACT_APP_API_BASE_URL}/bind/github/callback?token=${token}`);
+    const redirectUri = encodeURIComponent(`${process.env.REACT_APP_API_BASE_URL}/api/user/github/bind/callback?redirect_url=${encodeURIComponent('http://localhost:3000/easy-deploy/profile')}`);
     const scope = 'repo';
     return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
   },
 
   // 检查用户是否已绑定 GitHub
-  checkGithubBinding: () => {
-    return api.get('/api/user/github/status');
+  checkGithubBinding: async (): Promise<{ code: number; data: GithubUserInfo }> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/github/status', {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data; // 返回后端的响应数据，而不是整个 axios 响应对象
   },
 
   // 解绑 GitHub 账号
-  unbindGithub: () => {
-    return api.post('/api/user/github/unbind');
+  unbindGithub: async () => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/github/unbind', null, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
   },
 };
 

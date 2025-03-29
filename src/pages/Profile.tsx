@@ -1,21 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, message, Space, Typography, Divider } from 'antd';
-import { GithubOutlined } from '@ant-design/icons';
-import { githubService } from '../services/api';
+import { Card, Button, message, Space, Typography, Divider, Avatar, Descriptions } from 'antd';
+import { GithubOutlined, LoadingOutlined } from '@ant-design/icons';
+import { githubService, GithubUserInfo } from '../services/api';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const Profile: React.FC = () => {
-  const [isGithubBound, setIsGithubBound] = useState<boolean>(false);
+  const [githubInfo, setGithubInfo] = useState<GithubUserInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   // 检查 GitHub 绑定状态
   const checkGithubBinding = async () => {
     try {
+      setLoading(true);
       const response = await githubService.checkGithubBinding();
-      setIsGithubBound(response.data.bound);
+      console.log('GitHub binding response:', response); // 添加调试日志
+      if (response.code === 200 && response.data) {
+        setGithubInfo(response.data);
+      }
     } catch (error) {
       console.error('检查 GitHub 绑定状态失败:', error);
+      message.error('获取 GitHub 绑定状态失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -35,7 +42,8 @@ const Profile: React.FC = () => {
       setLoading(true);
       await githubService.unbindGithub();
       message.success('GitHub 账号解绑成功');
-      setIsGithubBound(false);
+      // 重新获取绑定状态
+      await checkGithubBinding();
     } catch (error) {
       message.error('GitHub 账号解绑失败');
     } finally {
@@ -55,19 +63,49 @@ const Profile: React.FC = () => {
             <GithubOutlined style={{ marginRight: '8px' }} />
             GitHub 账号绑定
           </Title>
-          <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
-            <Text>
-              {isGithubBound ? '已绑定 GitHub 账号' : '未绑定 GitHub 账号'}
-            </Text>
-            <Button
-              type={isGithubBound ? 'default' : 'primary'}
-              icon={<GithubOutlined />}
-              onClick={isGithubBound ? handleGithubUnbinding : handleGithubBinding}
-              loading={loading}
-            >
-              {isGithubBound ? '解绑 GitHub 账号' : '绑定 GitHub 账号'}
-            </Button>
-          </Space>
+
+          {loading ? (
+            <LoadingOutlined style={{ fontSize: 24 }} spin />
+          ) : (
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {githubInfo && githubInfo.bound ? (
+                <>
+                  <Descriptions bordered>
+                    <Descriptions.Item label="头像" span={3}>
+                      <Avatar size={64} src={githubInfo.avatar_url} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="GitHub ID" span={3}>
+                      {githubInfo.github_id}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="用户名" span={3}>
+                      {githubInfo.name}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="邮箱" span={3}>
+                      {githubInfo.email}
+                    </Descriptions.Item>
+                  </Descriptions>
+                  <Button
+                    danger
+                    icon={<GithubOutlined />}
+                    onClick={handleGithubUnbinding}
+                  >
+                    解绑 GitHub 账号
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div>当前未绑定 GitHub 账号</div>
+                  <Button
+                    type="primary"
+                    icon={<GithubOutlined />}
+                    onClick={handleGithubBinding}
+                  >
+                    绑定 GitHub 账号
+                  </Button>
+                </>
+              )}
+            </Space>
+          )}
         </div>
 
         {/* 其他个人信息部分 */}
