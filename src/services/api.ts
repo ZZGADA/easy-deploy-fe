@@ -84,9 +84,17 @@ export const githubService = {
   // 获取 GitHub OAuth URL
   getOAuthUrl: () => {
     const clientId = process.env.REACT_APP_GITHUB_CLIENT_ID;
-    const redirectUri = encodeURIComponent(`${process.env.REACT_APP_API_BASE_URL}/api/user/github/bind/callback?redirect_url=${encodeURIComponent('http://localhost:3000/easy-deploy/profile')}`);
+    const token = localStorage.getItem('token');
+    const frontendRedirectUrl = 'http://localhost:3000/easy-deploy/profile';
+    const backendCallbackUrl = `${process.env.REACT_APP_API_BASE_URL}/api/user/github/bind/callback`;
+    
+    // 构建后端回调 URL，包含前端重定向地址和用户 token
+    const callbackUrl = encodeURIComponent(
+      `${backendCallbackUrl}?redirect_url=${encodeURIComponent(frontendRedirectUrl)}&token=${token}`
+    );
+    
     const scope = 'repo';
-    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
+    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${callbackUrl}&scope=${scope}`;
   },
 
   // 检查用户是否已绑定 GitHub
