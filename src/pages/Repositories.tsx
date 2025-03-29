@@ -6,6 +6,8 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { githubService } from '../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
 const { DirectoryTree } = Tree;
@@ -74,20 +76,28 @@ const Repositories: React.FC = () => {
     type: 'markdown'
   });
   const [fileContentLoading, setFileContentLoading] = useState(false);
+  const [developerToken, setDeveloperToken] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const USERS = 'ZZGADA';
 
   const githubApi = axios.create({
     baseURL: 'https://api.github.com',
     headers: {
-      'Authorization': `token ${process.env.REACT_APP_GITHUB_TOKEN}`,
+      'Authorization': `Bearer ${developerToken}`,
       'Accept': 'application/vnd.github.v3+json'
     }
   });
 
   useEffect(() => {
-    fetchRepositories();
+    fetchDeveloperToken();
   }, []);
+
+  useEffect(() => {
+    if (developerToken) {
+      fetchRepositories();
+    }
+  }, [developerToken]);
 
   useEffect(() => {
     if (selectedRepo) {
@@ -95,6 +105,23 @@ const Repositories: React.FC = () => {
       fetchFileTree(selectedRepo.name);
     }
   }, [selectedRepo]);
+
+  const fetchDeveloperToken = async () => {
+    try {
+      const response = await githubService.queryDeveloperToken();
+      if (response.code === 200) {
+        if (!response.data || !response.data.developer_token) {
+          message.error('请先在"个人中心"完成 GitHub 账号绑定并设置开发者令牌');
+          navigate('/easy-deploy/profile');
+          return;
+        }
+        setDeveloperToken(response.data.developer_token);
+      }
+    } catch (error) {
+      message.error('获取开发者令牌失败');
+      navigate('/easy-deploy/profile');
+    }
+  };
 
   const fetchRepositories = async () => {
     try {

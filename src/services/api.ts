@@ -79,6 +79,19 @@ export interface GithubUserInfo {
   name?: string;
 }
 
+// GitHub 开发者令牌相关接口
+export interface DeveloperTokenRequest {
+  developer_token: string;
+  expire_time: string;
+  comment: string;
+}
+
+export interface DeveloperTokenResponse {
+  developer_token: string;
+  developer_token_comment: string;
+  developer_token_expire_time: string;
+}
+
 // GitHub 绑定相关接口
 export const githubService = {
   // 获取 GitHub OAuth URL
@@ -112,6 +125,39 @@ export const githubService = {
   unbindGithub: async () => {
     const token = localStorage.getItem('token');
     const response = await api.post('/api/user/github/unbind', null, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 保存开发者令牌
+  saveDeveloperToken: async (data: DeveloperTokenRequest) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/github/developer/token/save', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 更新开发者令牌
+  updateDeveloperToken: async (data: DeveloperTokenRequest) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/github/developer/token/update', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 查询开发者令牌
+  queryDeveloperToken: async () => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/github/developer/token/query', {
       headers: {
         'Authorization': `${token}`
       }
