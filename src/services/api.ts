@@ -69,4 +69,26 @@ export const authService = {
   }
 };
 
+// GitHub 绑定相关接口
+export const githubService = {
+  // 获取 GitHub OAuth URL
+  getOAuthUrl: () => {
+    const clientId = process.env.REACT_APP_GITHUB_CLIENT_ID;
+    const token = localStorage.getItem('token'); // 获取用户 token
+    const redirectUri = encodeURIComponent(`${process.env.REACT_APP_API_BASE_URL}/bind/github/callback?token=${token}`);
+    const scope = 'repo';
+    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
+  },
+
+  // 检查用户是否已绑定 GitHub
+  checkGithubBinding: () => {
+    return api.get('/api/user/github/status');
+  },
+
+  // 解绑 GitHub 账号
+  unbindGithub: () => {
+    return api.post('/api/user/github/unbind');
+  },
+};
+
 export default api; 
