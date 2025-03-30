@@ -1,12 +1,56 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
+// 统一的 401 错误处理函数
+const handle401Error = () => {
+  // 清除所有认证信息
+  Cookies.remove('token');
+  localStorage.removeItem('token');
+  
+  // 清除所有 axios 实例的默认 headers
+  delete api.defaults.headers.common['Authorization'];
+  delete githubApi.defaults.headers.common['Authorization'];
+  
+  // 重定向到登录页面
+  window.location.href = '/easy-deploy/login';
+};
+
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// GitHub API 实例
+export const githubApi = axios.create({
+  baseURL: 'https://api.github.com',
+  headers: {
+    'Accept': 'application/vnd.github.v3+json'
+  }
+});
+
+// 为 api 实例添加响应拦截器
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      handle401Error();
+    }
+    return Promise.reject(error);
+  }
+);
+
+// 为 githubApi 实例添加响应拦截器
+githubApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      handle401Error();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export interface RegisterData {
   email: string;

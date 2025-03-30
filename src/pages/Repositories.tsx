@@ -6,7 +6,7 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { githubService } from '../services/api';
+import { githubService, githubApi } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
@@ -94,6 +94,8 @@ const Repositories: React.FC = () => {
 
   useEffect(() => {
     if (developerToken && repositoryName) {
+      // 更新 GitHub API 认证头
+      githubApi.defaults.headers.common['Authorization'] = `Bearer ${developerToken}`;
       fetchRepositories();
     }
   }, [developerToken, repositoryName]);
@@ -117,9 +119,11 @@ const Repositories: React.FC = () => {
         setDeveloperToken(response.data.developer_token);
         setRepositoryName(response.data.developer_repository_name);
       }
-    } catch (error) {
-      message.error('获取开发者令牌失败');
-      navigate('/easy-deploy/profile');
+    } catch (error: any) {
+      if (error.response?.status !== 401) {
+        message.error('获取开发者令牌失败');
+        navigate('/easy-deploy/profile');
+      }
     }
   };
 
@@ -128,8 +132,10 @@ const Repositories: React.FC = () => {
       const response = await githubApi.get(`/users/${repositoryName}/repos`);
       setRepositories(response.data);
     } catch (error: any) {
-      console.error('Error fetching repositories:', error);
-      message.error('获取仓库列表失败：' + (error.response?.data?.message || '未知错误'));
+      if (error.response?.status !== 401) {
+        console.error('Error fetching repositories:', error);
+        message.error('获取仓库列表失败：' + (error.response?.data?.message || '未知错误'));
+      }
     } finally {
       setLoading(false);
     }
