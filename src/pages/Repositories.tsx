@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { List, Typography, Card, Space, Tag, Spin, message, Tree, Row, Col } from 'antd';
+import { List, Typography, Card, Space, Tag, Spin, message, Tree, Row, Col, Select } from 'antd';
 import { GithubOutlined, BranchesOutlined, ClockCircleOutlined, UserOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import MarkdownPreview from '@uiw/react-markdown-preview';
@@ -78,6 +78,7 @@ const Repositories: React.FC = () => {
   const [fileContentLoading, setFileContentLoading] = useState(false);
   const [developerToken, setDeveloperToken] = useState<string | null>(null);
   const [repositoryName, setRepositoryName] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const navigate = useNavigate();
 
   const githubApi = axios.create({
@@ -103,9 +104,14 @@ const Repositories: React.FC = () => {
   useEffect(() => {
     if (selectedRepo) {
       fetchBranches(selectedRepo.name);
-      fetchFileTree(selectedRepo.name);
     }
   }, [selectedRepo]);
+
+  useEffect(() => {
+    if (selectedRepo && selectedBranch) {
+      fetchFileTree(selectedRepo.name, selectedBranch);
+    }
+  }, [selectedRepo, selectedBranch]);
 
   const fetchDeveloperToken = async () => {
     try {
@@ -168,6 +174,8 @@ const Repositories: React.FC = () => {
       );
 
       setBranches(branchesWithCommits);
+      // 设置默认分支
+      setSelectedBranch(selectedRepo?.default_branch || branchesWithCommits[0]?.name);
     } catch (error: any) {
       console.error('Error fetching branches:', error);
       message.error('获取分支列表失败：' + (error.response?.data?.message || '未知错误'));
@@ -177,16 +185,12 @@ const Repositories: React.FC = () => {
     }
   };
 
-  const fetchFileTree = async (repoName: string) => {
+  const fetchFileTree = async (repoName: string, branch: string) => {
     setFileTreeLoading(true);
     try {
-      // 获取默认分支
-      const repoResponse = await githubApi.get(`/repos/${repositoryName}/${repoName}`);
-      const defaultBranch = repoResponse.data.default_branch;
-
       // 使用 recursive 参数一次性获取所有文件
       const response = await githubApi.get(
-        `/repos/${repositoryName}/${repoName}/git/trees/${defaultBranch}`,
+        `/repos/${repositoryName}/${repoName}/git/trees/${branch}`,
         { params: { recursive: 1 } }
       );
 
@@ -332,12 +336,13 @@ const Repositories: React.FC = () => {
   };
 
   const fetchFileContent = async (path: string) => {
-    if (!selectedRepo) return;
+    if (!selectedRepo || !selectedBranch) return;
     
     setFileContentLoading(true);
     try {
       const response = await githubApi.get(
-        `/repos/${repositoryName}/${selectedRepo.name}/contents/${path}`
+        `/repos/${repositoryName}/${selectedRepo.name}/contents/${path}`,
+        { params: { ref: selectedBranch } }
       );
       
       const fileType = getFileLanguage(path);
@@ -478,7 +483,7 @@ const Repositories: React.FC = () => {
         const currentDir = selectedFile.split('/').slice(0, -1).join('/');
         const imagePath = currentDir ? `${currentDir}/${url}` : url;
         
-        return `https://raw.githubusercontent.com/${repositoryName}/${selectedRepo?.name}/${selectedRepo?.default_branch}/${imagePath}`;
+        return `https://raw.githubusercontent.com/${repositoryName}/${selectedRepo?.name}/${selectedBranch}/${imagePath}`;
       };
 
       return (
@@ -556,6 +561,15 @@ const Repositories: React.FC = () => {
     );
   };
 
+  const handleBranchChange = (branchName: string) => {
+    setSelectedBranch(branchName);
+    setSelectedFile('');
+    setFileContent({
+      content: '',
+      type: 'markdown'
+    });
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -610,7 +624,21 @@ const Repositories: React.FC = () => {
             <Col span={24} style={{ marginBottom: '16px' }}>
               <Title level={4}>{selectedRepo.name}</Title>
               <Space>
-                <Tag icon={<BranchesOutlined />}>{selectedRepo.default_branch}</Tag>
+                <Select
+                  loading={branchLoading}
+                  value={selectedBranch}
+                  onChange={handleBranchChange}
+                  style={{ width: 200 }}
+                >
+                  {branches.map(branch => (
+                    <Select.Option key={branch.name} value={branch.name}>
+                      <Space>
+                        <BranchesOutlined />
+                        {branch.name}
+                      </Space>
+                    </Select.Option>
+                  ))}
+                </Select>
                 <Tag icon={<ClockCircleOutlined />}>
                   最后更新: {formatDate(selectedRepo.updated_at)}
                 </Tag>

@@ -1,14 +1,15 @@
 import React from 'react';
-import { Typography } from 'antd';
+import { Card, Typography } from 'antd';
+import { RocketOutlined } from '@ant-design/icons';
 
 const { Title } = Typography;
 
 const Team: React.FC = () => {
   return (
-    <div>
-      <Title level={2}>团队空间</Title>
-      <p>正在开发中...</p>
-    </div>
+    <Card style={{ textAlign: 'center', padding: '48px' }}>
+      <RocketOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '24px' }} />
+      <Title level={3}>正在开发中～</Title>
+    </Card>
   );
 };
 

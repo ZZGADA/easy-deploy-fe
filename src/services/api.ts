@@ -212,4 +212,71 @@ export const githubService = {
   },
 };
 
+// Dockerfile 相关接口
+export interface DockerfileItem {
+  index: number;
+  dockerfile_key: string;
+  shell_value: string;
+}
+
+export interface DockerfileData {
+  id?: number;
+  repository_name: string;
+  repository_id: string;
+  branch_name: string;
+  file_name: string;
+  file_data: DockerfileItem[];
+}
+
+interface QueryDockerfileParams {
+  repository_id: string;
+  branch_name: string;
+}
+
+export const dockerfileService = {
+  uploadDockerfile: async (data: DockerfileData) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/dockerfile/repository/upload', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  queryDockerfile: async (params: QueryDockerfileParams) => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/dockerfile/repository/query', {
+      params,
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  updateDockerfile: async (data: DockerfileData) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/dockerfile/repository/update', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  deleteDockerfile: async (dockerFileID: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/dockerfile/repository/delete', 
+      { id: dockerFileID},
+      {
+        headers: {
+          'Authorization': `${token}`
+        }
+      }
+    );
+    return response.data;
+  }
+};
+
 export default api; 
