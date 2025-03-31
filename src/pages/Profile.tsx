@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, message, Space, Typography, Divider, Avatar, Descriptions, Form, Input, DatePicker } from 'antd';
-import { GithubOutlined, LoadingOutlined, EditOutlined } from '@ant-design/icons';
-import { githubService, GithubUserInfo, DeveloperTokenRequest, DeveloperTokenResponse } from '../services/api';
+import { Card, Button, message, Space, Typography, Divider, Avatar, Descriptions, Form, Input, DatePicker, Table, Modal, Tag } from 'antd';
+import { GithubOutlined, LoadingOutlined, EditOutlined, PlusOutlined, DeleteOutlined, StarOutlined } from '@ant-design/icons';
+import { githubService, GithubUserInfo, DeveloperTokenRequest, DeveloperTokenResponse, dockerAccountService, DockerAccount, DockerAccountRequest } from '../services/api';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import locale from 'antd/es/date-picker/locale/zh_CN';
@@ -17,6 +17,11 @@ const Profile: React.FC = () => {
   const [tokenInfo, setTokenInfo] = useState<DeveloperTokenResponse | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [form] = Form.useForm();
+  const [dockerAccounts, setDockerAccounts] = useState<DockerAccount[]>([]);
+  const [dockerLoading, setDockerLoading] = useState(false);
+  const [isDockerModalVisible, setIsDockerModalVisible] = useState(false);
+  const [editingDockerAccount, setEditingDockerAccount] = useState<DockerAccount | null>(null);
+  const [dockerForm] = Form.useForm();
 
   const isFieldDisabled = Boolean(tokenInfo && !isEditing);
   const fieldBackgroundColor = isFieldDisabled ? '#f5f5f5' : 'white';
@@ -145,9 +150,158 @@ const Profile: React.FC = () => {
     }
   };
 
+  // 获取 Docker 账号列表
+  const fetchDockerAccounts = async () => {
+    try {
+      setDockerLoading(true);
+      const response = await dockerAccountService.queryDockerAccounts();
+      if (response.code === 200) {
+        setDockerAccounts(response.data || []);
+      }
+    } catch (error) {
+      message.error('获取 Docker 账号列表失败');
+    } finally {
+      setDockerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDockerAccounts();
+  }, []);
+
+  // 处理 Docker 账号表单提交
+  const handleDockerSubmit = async (values: DockerAccountRequest) => {
+    try {
+      setDockerLoading(true);
+      if (editingDockerAccount) {
+        await dockerAccountService.updateDockerAccount({
+          ...values,
+          id: editingDockerAccount.id
+        });
+        message.success('Docker 账号更新成功');
+      } else {
+        await dockerAccountService.saveDockerAccount(values);
+        message.success('Docker 账号添加成功');
+      }
+      setIsDockerModalVisible(false);
+      dockerForm.resetFields();
+      fetchDockerAccounts();
+    } catch (error) {
+      message.error('操作失败');
+    } finally {
+      setDockerLoading(false);
+    }
+  };
+
+  // 处理删除 Docker 账号
+  const handleDeleteDocker = async (record: DockerAccount) => {
+    try {
+      const response = await dockerAccountService.deleteDockerAccount(record.id);
+      if (response.code === 200) {
+        message.success('Docker 账号删除成功');
+        // 重新获取账号列表
+        await fetchDockerAccounts();
+      } else {
+        message.error(response.message || '删除失败');
+      }
+    } catch (error) {
+      message.error('删除失败');
+    }
+  };
+
+  // 处理设置默认 Docker 账号
+  const handleSetDefault = async (record: DockerAccount) => {
+    try {
+      const response = await dockerAccountService.setDefaultAccount(record.id);
+      if (response.code === 200) {
+        message.success('默认账号设置成功');
+        // 重新获取账号列表
+        await fetchDockerAccounts();
+      } else {
+        message.error(response.message || '设置默认账号失败');
+      }
+    } catch (error) {
+      message.error('设置默认账号失败');
+    }
+  };
+
+  // Docker 账号表格列定义
+  const dockerColumns = [
+    {
+      title: '仓库地址',
+      dataIndex: 'server',
+      key: 'server',
+    },
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
+    },
+    {
+      title: '备注',
+      dataIndex: 'comment',
+      key: 'comment',
+    },
+    {
+      title: '状态',
+      key: 'status',
+      render: (text: string, record: DockerAccount) => (
+        <Tag color={record.is_default ? 'green' : 'default'}>
+          {record.is_default ? '默认账号' : '普通账号'}
+        </Tag>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (text: string, record: DockerAccount) => (
+        <Space size="middle">
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setEditingDockerAccount(record);
+              dockerForm.setFieldsValue({
+                server: record.server,
+                username: record.username,
+                password: record.password,
+                comment: record.comment,
+              });
+              setIsDockerModalVisible(true);
+            }}
+          >
+            编辑
+          </Button>
+          {!record.is_default && (
+            <Button
+              type="text"
+              icon={<StarOutlined />}
+              onClick={() => handleSetDefault(record)}
+            >
+              设为默认
+            </Button>
+          )}
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDeleteDocker(record)}
+          >
+            删除
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <div style={{ padding: '24px' }}>
-      <Card>
+    <div style={{
+      padding: '24px',
+      height: 'calc(100vh - 64px)', // 减去顶部导航栏的高度
+      overflow: 'auto',
+      backgroundColor: '#f0f2f5'
+    }}>
+      <Card style={{ marginBottom: '24px' }}>
         <Title level={2}>个人中心</Title>
         <Divider />
         
@@ -202,9 +356,98 @@ const Profile: React.FC = () => {
           )}
         </div>
 
-        {/* 其他个人信息部分 */}
-        {/* ... 其他个人信息的代码 ... */}
+        {/* Docker 账号管理部分 */}
+        <Divider />
+        <div style={{ marginBottom: '24px' }}>
+          <Space style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+            <Title level={4}>Docker 账号管理</Title>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingDockerAccount(null);
+                dockerForm.resetFields();
+                setIsDockerModalVisible(true);
+              }}
+            >
+              添加 Docker 账号
+            </Button>
+          </Space>
 
+          <Table
+            loading={dockerLoading}
+            columns={dockerColumns}
+            dataSource={dockerAccounts}
+            rowKey="id"
+          />
+        </div>
+
+        {/* Docker 账号表单模态框 */}
+        <Modal
+          title={`${editingDockerAccount ? '编辑' : '添加'} Docker 账号`}
+          open={isDockerModalVisible}
+          onCancel={() => {
+            setIsDockerModalVisible(false);
+            setEditingDockerAccount(null);
+            dockerForm.resetFields();
+          }}
+          footer={null}
+        >
+          <Form
+            form={dockerForm}
+            layout="vertical"
+            onFinish={handleDockerSubmit}
+          >
+            <Form.Item
+              name="server"
+              label="仓库地址"
+              rules={[{ required: true, message: '请输入 Docker 仓库地址' }]}
+            >
+              <Input placeholder="请输入 Docker 仓库地址" />
+            </Form.Item>
+
+            <Form.Item
+              name="username"
+              label="用户名"
+              rules={[{ required: true, message: '请输入用户名' }]}
+            >
+              <Input placeholder="请输入用户名" />
+            </Form.Item>
+
+            <Form.Item
+              name="password"
+              label="密码"
+              rules={[{ required: true, message: '请输入密码' }]}
+            >
+              <Input.Password placeholder="请输入密码" />
+            </Form.Item>
+
+            <Form.Item
+              name="comment"
+              label="备注"
+              rules={[{ required: true, message: '请输入备注信息' }]}
+            >
+              <Input.TextArea placeholder="请输入备注信息" />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit" loading={dockerLoading}>
+                  {editingDockerAccount ? '保存修改' : '添加账号'}
+                </Button>
+                <Button onClick={() => {
+                  setIsDockerModalVisible(false);
+                  setEditingDockerAccount(null);
+                  dockerForm.resetFields();
+                }}>
+                  取消
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {/* GitHub 开发者信息部分 */}
         {githubInfo?.bound && (
           <>
             <Divider />

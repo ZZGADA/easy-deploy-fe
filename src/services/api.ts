@@ -279,4 +279,83 @@ export const dockerfileService = {
   }
 };
 
+// Docker账号相关接口
+export interface DockerAccount {
+  id: number;
+  user_id: number;
+  server: string;
+  username: string;
+  password: string;
+  comment: string;
+  is_default: boolean;
+}
+
+export interface DockerAccountRequest {
+  id?: number;
+  server: string;
+  username: string;
+  password: string;
+  comment: string;
+}
+
+export const dockerAccountService = {
+  // 保存Docker账号
+  saveDockerAccount: async (data: DockerAccountRequest) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/docker/info/save', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 更新Docker账号
+  updateDockerAccount: async (data: DockerAccountRequest) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/docker/info/update', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 删除Docker账号
+  deleteDockerAccount: async (id: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/docker/info/delete', { id }, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 查询Docker账号列表
+  queryDockerAccounts: async () => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/docker/info/query', {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 设置默认Docker账号
+  setDefaultAccount: async (dockerAccountId: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/docker/info/setDefault', 
+      { docker_account_id: dockerAccountId },
+      {
+        headers: {
+          'Authorization': `${token}`
+        }
+      }
+    );
+    return response.data;
+  }
+};
+
 export default api; 
