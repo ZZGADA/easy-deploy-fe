@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Modal, Steps, Typography, Alert, Button, Input, Space, Descriptions } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { wsService } from '../services/websocket';
@@ -33,7 +33,12 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [buildOutput, setBuildOutput] = useState<string[]>([]);
   const [imageName, setImageName] = useState('');
+  const imageNameRef = useRef('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    imageNameRef.current = imageName;
+  }, [imageName]);
 
   useEffect(() => {
     if (visible && dockerfile) {
@@ -96,7 +101,7 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
 
   const handleSuccess = (message: string) => {
     console.log("handleSuccess - message:", message);
-    console.log("handleSuccess - imageName:", imageName);
+    console.log("handleSuccess - imageName:", imageNameRef.current);
     console.log("handleSuccess - currentStep:", currentStep);
     setBuildOutput(prev => [...prev, message]);
     if (message.includes('git clone success')) {
@@ -124,12 +129,12 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
       return;
     }
 
-    if (!imageName) {
+    if (!imageNameRef.current) {
       setError('请输入镜像名称');
       return;
     }
 
-    console.log("startBuild - imageName:", imageName);
+    console.log("startBuild - imageName:", imageNameRef.current);
     setLoading(true);
     setError('');
 
@@ -139,7 +144,7 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
         docker_build_step: 'clone_repository',
         data: {
           id: dockerfile.id,
-          docker_image_name: imageName.trim(),
+          docker_image_name: imageNameRef.current.trim(),
         },
       });
       setCurrentStep(1);
@@ -152,11 +157,12 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
 
   const startCloneRepository = () => {
     try {
+      console.log("startCloneRepository - imageName:", imageNameRef.current);
       wsService.send({
         docker_build_step: 'generate_dockerfile',
         data: {
           id: dockerfile?.id,
-          docker_image_name: imageName.trim(),
+          docker_image_name: imageNameRef.current.trim(),
         },
       });
     } catch (err) {
@@ -167,13 +173,14 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   };
 
   const startBuildImage = () => {
-    console.log("startBuildImage - imageName:", imageName);
+    const currentImageName = imageNameRef.current.trim();
+    console.log("startBuildImage - imageName:", currentImageName);
     if (!dockerfile?.id) {
       setError('Dockerfile ID 不存在');
       return;
     }
 
-    if (!imageName || imageName.trim() === '') {
+    if (!currentImageName) {
       setError('镜像名称不能为空');
       return;
     }
@@ -183,7 +190,7 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
         docker_build_step: 'build_image',
         data: {
           id: dockerfile.id,
-          docker_image_name: imageName.trim(),
+          docker_image_name: currentImageName,
         },
       });
     } catch (err) {
@@ -297,4 +304,4 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   );
 };
 
-export default ImageBuildModal; 
+export default ImageBuildModal;
