@@ -283,9 +283,10 @@ export const dockerfileService = {
 export interface DockerAccount {
   id: number;
   user_id: number;
-  server: string;
   username: string;
   password: string;
+  server: string;
+  namespace: string;
   comment: string;
   is_default: boolean;
   is_login: boolean;
@@ -296,10 +297,12 @@ export interface DockerAccount {
 
 export interface DockerAccountRequest {
   id?: number;
+  server: string;
   username: string;
   password: string;
   registry: string;
-  description?: string;
+  namespace: string;
+  comment: string;
 }
 
 export const dockerAccountService = {

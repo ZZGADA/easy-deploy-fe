@@ -256,6 +256,11 @@ const Profile: React.FC = () => {
       key: 'server',
     },
     {
+      title: '命名空间',
+      dataIndex: 'namespace',
+      key: 'namespace',
+    },
+    {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
@@ -295,6 +300,7 @@ const Profile: React.FC = () => {
               setEditingDockerAccount(record);
               dockerForm.setFieldsValue({
                 server: record.server,
+                namespace: record.namespace,
                 username: record.username,
                 password: record.password,
                 comment: record.comment,
@@ -450,6 +456,14 @@ const Profile: React.FC = () => {
               rules={[{ required: true, message: '请输入 Docker 仓库地址' }]}
             >
               <Input placeholder="请输入 Docker 仓库地址" />
+            </Form.Item>
+
+            <Form.Item
+              name="namespace"
+              label="命名空间"
+              rules={[{ required: true, message: '请输入命名空间' }]}
+            >
+              <Input placeholder="请输入命名空间" />
             </Form.Item>
 
             <Form.Item

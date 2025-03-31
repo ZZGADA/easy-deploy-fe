@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Tree, Select, Button, Form, Input, message, Modal, Space, Card, List, Typography, AutoComplete } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined, GithubOutlined, ImportOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, GithubOutlined, ImportOutlined, BuildOutlined } from '@ant-design/icons';
 import { dockerfileService, DockerfileData, DockerfileItem, githubApi, githubService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import ImageBuildModal from '../components/ImageBuildModal';
 
 const { Option } = Select;
 const { Title, Text, Paragraph } = Typography;
@@ -42,6 +43,8 @@ const DockerManage: React.FC = () => {
   const [form] = Form.useForm();
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importContent, setImportContent] = useState('');
+  const [isBuildModalVisible, setIsBuildModalVisible] = useState(false);
+  const [selectedDockerfile, setSelectedDockerfile] = useState<DockerfileData | null>(null);
 
   // 获取开发者令牌和仓库列表
   useEffect(() => {
@@ -226,6 +229,12 @@ const DockerManage: React.FC = () => {
     }
   };
 
+  // 处理镜像构建
+  const handleBuild = (dockerfile: DockerfileData) => {
+    setSelectedDockerfile(dockerfile);
+    setIsBuildModalVisible(true);
+  };
+
   return (
       <div style={{ display: 'flex', height: '100%' }}>
         <div style={{ width: '20%', borderRight: '1px solid #f0f0f0', padding: '16px' }}>
@@ -324,6 +333,13 @@ const DockerManage: React.FC = () => {
                           style={{ width: '100%', marginBottom: '16px' }}
                           extra={
                             <Space>
+                                <Button
+                                  icon={<BuildOutlined />}
+                                  type="primary"
+                                  onClick={() => handleBuild(dockerfile)}
+                              >
+                                镜像构建
+                              </Button>
                               <Button
                                   icon={<EditOutlined />}
                                   onClick={() => handleEdit(dockerfile)}
@@ -397,6 +413,16 @@ const DockerManage: React.FC = () => {
                 )}
             />
           </Space>
+
+          {/* 镜像构建模态框 */}
+          <ImageBuildModal
+            visible={isBuildModalVisible}
+            onCancel={() => {
+              setIsBuildModalVisible(false);
+              setSelectedDockerfile(null);
+            }}
+            dockerfile={selectedDockerfile}
+          />
 
           {/* 导入 Dockerfile 的模态框 */}
           <Modal
