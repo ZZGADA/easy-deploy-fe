@@ -3,7 +3,6 @@ import { Tree, Select, Button, Form, Input, message, Modal, Space, Card, List, T
 import { DeleteOutlined, EditOutlined, PlusOutlined, GithubOutlined, ImportOutlined } from '@ant-design/icons';
 import { dockerfileService, DockerfileData, DockerfileItem, githubApi, githubService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import ImageBuildModal from '../components/ImageBuildModal';
 
 const { Option } = Select;
 const { Title, Text, Paragraph } = Typography;
@@ -43,8 +42,6 @@ const DockerManage: React.FC = () => {
   const [form] = Form.useForm();
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importContent, setImportContent] = useState('');
-  const [buildModalVisible, setBuildModalVisible] = useState(false);
-  const [selectedDockerfile, setSelectedDockerfile] = useState<DockerfileData | null>(null);
 
   // 获取开发者令牌和仓库列表
   useEffect(() => {
@@ -94,7 +91,7 @@ const DockerManage: React.FC = () => {
         repository_id: repoId,
         branch_name: selectedBranch
       });
-      
+
       if (response.code === 200 && response.data) {
         setDockerfiles(Array.isArray(response.data) ? response.data : []);
       } else {
@@ -220,7 +217,7 @@ const DockerManage: React.FC = () => {
       form.setFieldsValue({
         commands: commands
       });
-      
+
       setIsImportModalVisible(false);
       setImportContent('');
       setIsModalVisible(true);
@@ -230,218 +227,275 @@ const DockerManage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <Card>
-          <Space>
-            <Select
-              style={{ width: 200 }}
-              placeholder="选择仓库"
-              value={selectedRepo}
-              onChange={handleRepoSelect}
-            >
-              {repositories.map(repo => (
-                <Option key={repo.name} value={repo.name}>
-                  {repo.name}
-                </Option>
-              ))}
-            </Select>
-
-            <Select
-              style={{ width: 200 }}
-              placeholder="选择分支"
-              value={selectedBranch}
-              onChange={handleBranchChange}
-              disabled={!selectedRepo}
-            >
-              {repositories
-                .find(repo => repo.name === selectedRepo)
-                ?.branches.map(branch => (
-                  <Option key={branch} value={branch}>
-                    {branch}
-                  </Option>
-                ))}
-            </Select>
-
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreate}
-              disabled={!selectedRepo || !selectedBranch}
-            >
-              创建 Dockerfile
-            </Button>
-
-            <Button
-              icon={<ImportOutlined />}
-              onClick={() => setIsImportModalVisible(true)}
-              disabled={!selectedRepo || !selectedBranch}
-            >
-              导入 Dockerfile
-            </Button>
-          </Space>
-        </Card>
-
-        {dockerfiles.length > 0 && (
+      <div style={{ display: 'flex', height: '100%' }}>
+        <div style={{ width: '20%', borderRight: '1px solid #f0f0f0', padding: '16px' }}>
+          <Title level={4}>代码仓库列表</Title>
           <List
-            dataSource={dockerfiles}
-            renderItem={(dockerfile) => (
-              <List.Item>
-                <Card style={{ width: '100%' }}>
-                  <div style={{ marginBottom: 16 }}>
-                    <Title level={5}>{dockerfile.file_name}</Title>
-                  </div>
+              size="small"
+              dataSource={repositories}
+              style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 80px)' }}
+              renderItem={(repo) => (
+                  <List.Item>
+                    <Card
+                        hoverable
+                        onClick={() => {
+                          handleRepoSelect(repo.name);
+                          // 自动选择第一个分支
+                          if (repo.branches.length > 0) {
+                            handleBranchChange(repo.branches[0]);
+                          }
+                        }}
+                        style={{
+                          cursor: 'pointer',
+                          width: '100%',
+                          backgroundColor: selectedRepo === repo.name ? '#f0f0f0' : 'white'
+                        }}
+                    >
+                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                        <Space>
+                          <GithubOutlined />
+                          <Text strong>{repo.name}</Text>
+                        </Space>
+                        <Text type="secondary" ellipsis>{repo.description}</Text>
+                      </Space>
+                    </Card>
+                  </List.Item>
+              )}
+          />
+        </div>
+        <div style={{ width: '80%', padding: '16px' }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Card>
+              <Space>
+                <Select
+                    style={{ width: 200 }}
+                    placeholder="选择分支"
+                    value={selectedBranch}
+                    onChange={handleBranchChange}
+                    disabled={!selectedRepo}
+                >
+                  {selectedRepo &&
+                      repositories
+                          .find(r => r.name === selectedRepo)
+                          ?.branches.map(branch => (
+                          <Option key={branch} value={branch}>
+                            {branch}
+                          </Option>
+                      ))}
+                </Select>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={handleCreate}
+                    disabled={!selectedRepo || !selectedBranch}
+                >
+                  创建 Dockerfile
+                </Button>
+                <Button
+                    icon={<ImportOutlined />}
+                    onClick={() => setIsImportModalVisible(true)}
+                    disabled={!selectedRepo || !selectedBranch}
+                >
+                  导入 Dockerfile
+                </Button>
+              </Space>
+            </Card>
+
+            <List
+                dataSource={dockerfiles}
+                locale={{
+                  emptyText: selectedRepo && selectedBranch ? (
+                      <div style={{ textAlign: 'center', padding: '24px' }}>
+                        <p>当前分支下暂无 Dockerfile 文件</p>
+                        <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={handleCreate}
+                        >
+                          制作 Dockerfile
+                        </Button>
+                      </div>
+                  ) : null
+                }}
+                renderItem={(dockerfile) => (
+                    <List.Item>
+                      <Card
+                          title={dockerfile.file_name}
+                          style={{ width: '100%', marginBottom: '16px' }}
+                          extra={
+                            <Space>
+                              <Button
+                                  icon={<EditOutlined />}
+                                  onClick={() => handleEdit(dockerfile)}
+                              >
+                                修改
+                              </Button>
+                              <Button
+                                  icon={<DeleteOutlined />}
+                                  danger
+                                  onClick={() => handleDelete(dockerfile)}
+                              >
+                                删除
+                              </Button>
+                            </Space>
+                          }
+                      >
                   <pre style={{
                     backgroundColor: '#282c34',
                     padding: '16px',
-                    borderRadius: '4px',
-                    color: '#abb2bf',
-                    fontFamily: 'Monaco, Menlo, Consolas, monospace',
-                    overflow: 'auto'
+                    borderRadius: '6px',
+                    margin: 0,
+                    overflow: 'auto',
+                    fontFamily: 'Monaco, Menlo, Consolas, "Courier New", monospace',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
                   }}>
-                    {dockerfile.file_data.map((item, index) => (
-                      <div key={index}>
-                        <span style={{ color: '#c678dd', fontWeight: 'bold' }}>{item.dockerfile_key}</span>
-                        <span style={{ color: '#98c379', marginLeft: '8px' }}>{item.shell_value}</span>
-                      </div>
-                    ))}
-                  </pre>
-                  <Space style={{ marginTop: 16 }}>
-                    <Button
-                      type="primary"
-                      onClick={() => {
-                        setSelectedDockerfile(dockerfile);
-                        setBuildModalVisible(true);
-                      }}
-                    >
-                      镜像构建
-                    </Button>
-                    <Button
-                      type="primary"
-                      onClick={() => handleEdit(dockerfile)}
-                    >
-                      修改
-                    </Button>
-                    <Button
-                      danger
-                      onClick={() => {
-                        Modal.confirm({
-                          title: '确认删除',
-                          content: '确定要删除这个 Dockerfile 吗？',
-                          onOk: () => handleDelete(dockerfile),
-                        });
-                      }}
-                    >
-                      删除
-                    </Button>
-                  </Space>
-                </Card>
-              </List.Item>
-            )}
-          />
-        )}
-      </Space>
-
-      {/* Dockerfile 编辑模态框 */}
-      <Modal
-        title={editingDockerfile ? "编辑 Dockerfile" : "创建 Dockerfile"}
-        open={isModalVisible}
-        onCancel={() => {
-          setIsModalVisible(false);
-          setEditingDockerfile(null);
-          form.resetFields();
-        }}
-        footer={null}
-        width={800}
-      >
-        <Form 
-          form={form} 
-          onFinish={handleSubmit}
-          initialValues={{
-            fileName: 'Dockerfile'
-          }}
-        >
-          <Form.Item
-            name="fileName"
-            label="文件名称"
-            rules={[{ required: true, message: '请输入文件名称' }]}
-          >
-            <Input defaultValue="Dockerfile" />
-          </Form.Item>
-          <Form.List name="commands">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: 'flex', marginBottom: 8, width: '100%' }} align="start">
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'key']}
-                      rules={[{ required: true, message: '请输入 Dockerfile 命令' }]}
-                      style={{ width: '200px', marginBottom: 0 }}
-                    >
-                      <AutoComplete
-                        options={DOCKERFILE_KEYWORDS}
-                        placeholder="输入或选择命令"
-                        filterOption={(inputValue, option) =>
-                          option!.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                    <code>
+                      {dockerfile.file_data.map((item, index) => {
+                        // 处理注释和命令
+                        if (item.dockerfile_key === '#') {
+                          // 渲染注释行（绿色）
+                          return (
+                              <div key={index} style={{ color: '#98c379' }}>
+                                # {item.shell_value}
+                              </div>
+                          );
+                        } else {
+                          // 处理命令行
+                          const isSpecialCommand = ['CMD', 'ENTRYPOINT', 'RUN'].includes(item.dockerfile_key);
+                          return (
+                              <div key={index}>
+                                {/* 关键字（蓝色） */}
+                                <span style={{ color: '#61afef' }}>
+                                {item.dockerfile_key}
+                              </span>
+                                {' '}
+                                {/* 命令参数（特殊命令使用橙色，其他使用默认色） */}
+                                <span style={{
+                                  color: isSpecialCommand ? '#d19a66' : '#abb2bf',
+                                }}>
+                                {item.shell_value}
+                              </span>
+                              </div>
+                          );
                         }
-                        style={{ width: '100%' }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'value']}
-                      rules={[{ required: true, message: '请输入命令内容' }]}
-                      style={{ width: '600px', marginBottom: 0 }}
-                    >
-                      <Input.TextArea
-                        placeholder="命令内容"
-                        autoSize={{ minRows: 1, maxRows: 6 }}
-                        style={{ width: '100%' }}
-                      />
-                    </Form.Item>
-                    <Button onClick={() => remove(name)}>删除</Button>
-                  </Space>
-                ))}
-                <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                    添加命令
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
+                      }).reduce((prev: React.ReactNode[], curr: React.ReactNode, i: number) => {
+                        // 在每个指令之间添加空行，除非当前行是注释且下一行也是注释
+                        const nextItem = dockerfile.file_data[i + 1];
+                        const currentIsComment = dockerfile.file_data[i].dockerfile_key === '#';
+                        const nextIsComment = nextItem && nextItem.dockerfile_key === '#';
 
-      {/* Dockerfile 导入模态框 */}
-      <Modal
-        title="导入 Dockerfile"
-        open={isImportModalVisible}
-        onCancel={() => {
-          setIsImportModalVisible(false);
-          setImportContent('');
-        }}
-        onOk={handleImport}
-      >
-        <Input.TextArea
-          rows={10}
-          value={importContent}
-          onChange={(e) => setImportContent(e.target.value)}
-          placeholder="请粘贴 Dockerfile 内容..."
-        />
-      </Modal>
+                        if (currentIsComment && nextIsComment) {
+                          return [...prev, curr];
+                        }
+                        return [...prev, curr, <div key={`space-${i}`}>&nbsp;</div>];
+                      }, [])}
+                    </code>
+                  </pre>
+                      </Card>
+                    </List.Item>
+                )}
+            />
+          </Space>
 
-      {/* 镜像构建模态框 */}
-      <ImageBuildModal
-        visible={buildModalVisible}
-        onCancel={() => {
-          setBuildModalVisible(false);
-          setSelectedDockerfile(null);
-        }}
-        dockerfile={selectedDockerfile}
-      />
-    </div>
+          {/* 导入 Dockerfile 的模态框 */}
+          <Modal
+              title="导入 Dockerfile"
+              open={isImportModalVisible}
+              onOk={handleImport}
+              onCancel={() => {
+                setIsImportModalVisible(false);
+                setImportContent('');
+              }}
+              width={800}
+          >
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary">请粘贴标准格式的 Dockerfile 内容：</Text>
+            </div>
+            <Input.TextArea
+                value={importContent}
+                onChange={(e) => setImportContent(e.target.value)}
+                placeholder="FROM node:14&#13;&#10;WORKDIR /app&#13;&#10;COPY . .&#13;&#10;RUN npm install&#13;&#10;CMD ['npm', 'start']"
+                autoSize={{ minRows: 10, maxRows: 20 }}
+                style={{
+                  fontFamily: 'Monaco, Menlo, Consolas, "Courier New", monospace',
+                  fontSize: '14px'
+                }}
+            />
+          </Modal>
+
+          <Modal
+              title={`${editingDockerfile ? '修改' : '创建'} Dockerfile`}
+              open={isModalVisible}
+              onOk={form.submit}
+              onCancel={() => {
+                setIsModalVisible(false);
+                setEditingDockerfile(null);
+                form.resetFields();
+              }}
+              width={1000}
+          >
+            <Form
+                form={form}
+                onFinish={handleSubmit}
+                initialValues={{
+                  fileName: 'Dockerfile'
+                }}
+            >
+              <Form.Item
+                  name="fileName"
+                  label="文件名称"
+                  rules={[{ required: true, message: '请输入文件名称' }]}
+              >
+                <Input defaultValue="Dockerfile" />
+              </Form.Item>
+              <Form.List name="commands">
+                {(fields, { add, remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                          <Space key={key} style={{ display: 'flex', marginBottom: 8, width: '100%' }} align="start">
+                            <Form.Item
+                                {...restField}
+                                name={[name, 'key']}
+                                rules={[{ required: true, message: '请输入 Dockerfile 命令' }]}
+                                style={{ width: '200px', marginBottom: 0 }}
+                            >
+                              <AutoComplete
+                                  options={DOCKERFILE_KEYWORDS}
+                                  placeholder="输入或选择命令"
+                                  filterOption={(inputValue, option) =>
+                                      option!.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                  }
+                                  style={{ width: '100%' }}
+                              />
+                            </Form.Item>
+                            <Form.Item
+                                {...restField}
+                                name={[name, 'value']}
+                                rules={[{ required: true, message: '请输入命令内容' }]}
+                                style={{ width: '600px', marginBottom: 0 }}
+                            >
+                              <Input.TextArea
+                                  placeholder="命令内容"
+                                  autoSize={{ minRows: 1, maxRows: 6 }}
+                                  style={{ width: '100%' }}
+                              />
+                            </Form.Item>
+                            <Button onClick={() => remove(name)}>删除</Button>
+                          </Space>
+                      ))}
+                      <Form.Item>
+                        <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                          添加命令
+                        </Button>
+                      </Form.Item>
+                    </>
+                )}
+              </Form.List>
+            </Form>
+          </Modal>
+        </div>
+      </div>
   );
 };
 
