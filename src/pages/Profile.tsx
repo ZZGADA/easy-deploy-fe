@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Button, message, Space, Typography, Divider, Avatar, Descriptions, Form, Input, DatePicker, Table, Modal, Tag } from 'antd';
-import { GithubOutlined, LoadingOutlined, EditOutlined, PlusOutlined, DeleteOutlined, StarOutlined } from '@ant-design/icons';
+import { GithubOutlined, LoadingOutlined, EditOutlined, PlusOutlined, DeleteOutlined, StarOutlined, LoginOutlined } from '@ant-design/icons';
 import { githubService, GithubUserInfo, DeveloperTokenRequest, DeveloperTokenResponse, dockerAccountService, DockerAccount, DockerAccountRequest } from '../services/api';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
@@ -157,6 +157,8 @@ const Profile: React.FC = () => {
       const response = await dockerAccountService.queryDockerAccounts();
       if (response.code === 200) {
         setDockerAccounts(response.data || []);
+      } else {
+        message.error(response.message || '获取 Docker 账号列表失败');
       }
     } catch (error) {
       message.error('获取 Docker 账号列表失败');
@@ -169,43 +171,18 @@ const Profile: React.FC = () => {
     fetchDockerAccounts();
   }, []);
 
-  // 处理 Docker 账号表单提交
-  const handleDockerSubmit = async (values: DockerAccountRequest) => {
+  // 处理 Docker 账号登录
+  const handleDockerLogin = async (record: DockerAccount) => {
     try {
-      setDockerLoading(true);
-      if (editingDockerAccount) {
-        await dockerAccountService.updateDockerAccount({
-          ...values,
-          id: editingDockerAccount.id
-        });
-        message.success('Docker 账号更新成功');
-      } else {
-        await dockerAccountService.saveDockerAccount(values);
-        message.success('Docker 账号添加成功');
-      }
-      setIsDockerModalVisible(false);
-      dockerForm.resetFields();
-      fetchDockerAccounts();
-    } catch (error) {
-      message.error('操作失败');
-    } finally {
-      setDockerLoading(false);
-    }
-  };
-
-  // 处理删除 Docker 账号
-  const handleDeleteDocker = async (record: DockerAccount) => {
-    try {
-      const response = await dockerAccountService.deleteDockerAccount(record.id);
+      const response = await dockerAccountService.loginDockerAccount(record.id);
       if (response.code === 200) {
-        message.success('Docker 账号删除成功');
-        // 重新获取账号列表
+        message.success('Docker 账号登录成功');
         await fetchDockerAccounts();
       } else {
-        message.error(response.message || '删除失败');
+        message.error(response.message || '登录失败');
       }
     } catch (error) {
-      message.error('删除失败');
+      message.error('登录失败');
     }
   };
 
@@ -215,13 +192,59 @@ const Profile: React.FC = () => {
       const response = await dockerAccountService.setDefaultAccount(record.id);
       if (response.code === 200) {
         message.success('默认账号设置成功');
-        // 重新获取账号列表
         await fetchDockerAccounts();
       } else {
         message.error(response.message || '设置默认账号失败');
       }
     } catch (error) {
       message.error('设置默认账号失败');
+    }
+  };
+
+  // 处理删除 Docker 账号
+  const handleDeleteDocker = async (record: DockerAccount) => {
+    try {
+      const response = await dockerAccountService.deleteDockerAccount(record.id);
+      if (response.code === 200) {
+        message.success('Docker 账号删除成功');
+        await fetchDockerAccounts();
+      } else {
+        message.error(response.message || '删除失败');
+      }
+    } catch (error) {
+      message.error('删除失败');
+    }
+  };
+
+  // 处理 Docker 账号表单提交
+  const handleDockerSubmit = async (values: DockerAccountRequest) => {
+    try {
+      setDockerLoading(true);
+      if (editingDockerAccount) {
+        const response = await dockerAccountService.updateDockerAccount({
+          ...values,
+          id: editingDockerAccount.id
+        });
+        if (response.code === 200) {
+          message.success('Docker 账号更新成功');
+        } else {
+          message.error(response.message || '更新失败');
+        }
+      } else {
+        const response = await dockerAccountService.saveDockerAccount(values);
+        if (response.code === 200) {
+          message.success('Docker 账号添加成功');
+        } else {
+          message.error(response.message || '添加失败');
+        }
+      }
+      setIsDockerModalVisible(false);
+      dockerForm.resetFields();
+      await fetchDockerAccounts();
+    } catch (error) {
+      message.error('操作失败');
+    } finally {
+      setDockerLoading(false);
     }
   };
 
@@ -245,17 +268,26 @@ const Profile: React.FC = () => {
     {
       title: '状态',
       key: 'status',
+      width: 120,
       render: (text: string, record: DockerAccount) => (
-        <Tag color={record.is_default ? 'green' : 'default'}>
-          {record.is_default ? '默认账号' : '普通账号'}
-        </Tag>
+        <Space size={2} style={{ display: 'flex', flexWrap: 'nowrap' }}>
+          <Tag color={record.is_default ? 'green' : 'default'} style={{ margin: 0, padding: '0 4px' }}>
+            {record.is_default ? '默认' : '普通'}
+          </Tag>
+          {record.is_login && (
+            <Tag color="blue" style={{ margin: 0, padding: '0 4px' }}>
+              已登录
+            </Tag>
+          )}
+        </Space>
       ),
     },
     {
       title: '操作',
       key: 'action',
+      width: 260,
       render: (text: string, record: DockerAccount) => (
-        <Space size="middle">
+        <Space size={2}>
           <Button
             type="text"
             icon={<EditOutlined />}
@@ -269,6 +301,7 @@ const Profile: React.FC = () => {
               });
               setIsDockerModalVisible(true);
             }}
+            style={{ padding: '0 4px' }}
           >
             编辑
           </Button>
@@ -277,15 +310,28 @@ const Profile: React.FC = () => {
               type="text"
               icon={<StarOutlined />}
               onClick={() => handleSetDefault(record)}
+              style={{ padding: '0 4px' }}
             >
-              设为默认
+              设默认
             </Button>
           )}
+          <Button
+            type="text"
+            icon={<LoginOutlined />}
+            onClick={() => handleDockerLogin(record)}
+            style={{ 
+              color: record.is_login ? '#52c41a' : undefined,
+              padding: '0 4px'
+            }}
+          >
+            {record.is_login ? '已登录' : '登录'}
+          </Button>
           <Button
             type="text"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDeleteDocker(record)}
+            style={{ padding: '0 4px' }}
           >
             删除
           </Button>

@@ -288,14 +288,18 @@ export interface DockerAccount {
   password: string;
   comment: string;
   is_default: boolean;
+  is_login: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface DockerAccountRequest {
   id?: number;
-  server: string;
   username: string;
   password: string;
-  comment: string;
+  registry: string;
+  description?: string;
 }
 
 export const dockerAccountService = {
@@ -355,7 +359,29 @@ export const dockerAccountService = {
       }
     );
     return response.data;
-  }
+  },
+
+  // 登录Docker账号
+  loginDockerAccount: async (id: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/docker/login', { id }, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 查询已登录的Docker账号
+  queryLoginAccount: async () => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/docker/info/login/query', {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
 };
 
 export default api; 
