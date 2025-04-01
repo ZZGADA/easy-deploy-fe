@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Modal, Steps, Typography, Alert, Button, Input, Space, Descriptions } from 'antd';
+import { Modal, Steps, Typography, Alert, Button, Input, Space, Descriptions, Tag } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { wsService } from '../services/websocket';
 import { dockerAccountService, DockerfileData } from '../services/api';
@@ -7,6 +7,15 @@ import { dockerAccountService, DockerfileData } from '../services/api';
 const { Step } = Steps;
 const { Text } = Typography;
 const { TextArea } = Input;
+
+// 定义消息类型
+type MessageType = 'success' | 'build' | 'error' | 'info';
+
+interface BuildMessage {
+  type: MessageType;
+  content: string;
+  timestamp: number;
+}
 
 interface ImageBuildModalProps {
   visible: boolean;
@@ -31,7 +40,7 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   const [currentStep, setCurrentStep] = useState(0);
   const [dockerAccount, setDockerAccount] = useState<DockerAccount | null>(null);
   const [loading, setLoading] = useState(false);
-  const [buildOutput, setBuildOutput] = useState<string[]>([]);
+  const [buildOutput, setBuildOutput] = useState<BuildMessage[]>([]);
   const [imageName, setImageName] = useState('');
   const imageNameRef = useRef('');
   const [error, setError] = useState('');
@@ -67,7 +76,11 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   const handleWebSocketError = (error: string) => {
     setError(error);
     setLoading(false);
-    setBuildOutput(prev => [...prev, `WebSocket错误: ${error}`]);
+    setBuildOutput(prev => [...prev, {
+      type: 'error',
+      content: `WebSocket错误: ${error}`,
+      timestamp: Date.now()
+    }]);
     wsService.disconnect();
   };
 
@@ -91,39 +104,72 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   };
 
   const handleBuildOutput = (output: string) => {
-    setBuildOutput(prev => [...prev, output]);
+    // 判断消息类型
+    let type: MessageType = 'info';
+    if (output.includes('building with')) {
+      type = 'build';
+    } else if (output.includes('success')) {
+      type = 'success';
+    } else if (output.includes('error') || output.includes('failed')) {
+      type = 'error';
+    }
+
+    setBuildOutput(prev => [...prev, {
+      type,
+      content: output,
+      timestamp: Date.now()
+    }]);
   };
 
   const handleBuildError = (error: string) => {
-    setBuildOutput(prev => [...prev, `错误: ${error}`]);
+    setBuildOutput(prev => [...prev, {
+      type: 'error',
+      content: `错误: ${error}`,
+      timestamp: Date.now()
+    }]);
     setError(error);
   };
 
   const handleSuccess = (message: string) => {
-    console.log("handleSuccess - message:", message);
-    console.log("handleSuccess - imageName:", imageNameRef.current);
-    console.log("handleSuccess - currentStep:", currentStep);
-    setBuildOutput(prev => [...prev, message]);
+    console.log("=== handleSuccess 开始 ===");
+    console.log("收到消息:", message);
+    console.log("当前镜像名称:", imageNameRef.current);
+    console.log("当前步骤:", currentStep);
+    console.log("=== handleSuccess 结束 ===");
+    
+    setBuildOutput(prev => [...prev, {
+      type: 'success',
+      content: message,
+      timestamp: Date.now()
+    }]);
     if (message.includes('git clone success')) {
+      console.log("开始生成 Dockerfile...");
       setCurrentStep(2);
       startCloneRepository();
     } else if (message.includes('Dockerfile build success')) {
+      console.log("开始构建镜像...");
       setCurrentStep(3);
       startBuildImage();
-    } else if (message.includes('build & push success')) {
+    } else if (message.includes('docker build & push success')) {
+      console.log("构建完成！");
       setCurrentStep(4);
       setLoading(false);
     }
   };
 
   const handleError = (message: string) => {
-    setBuildOutput(prev => [...prev, `错误: ${message}`]);
+    setBuildOutput(prev => [...prev, {
+      type: 'error',
+      content: `错误: ${message}`,
+      timestamp: Date.now()
+    }]);
     setError(message);
     setLoading(false);
     wsService.disconnect();
   };
 
   const startBuild = async () => {
+    console.log("=== startBuild 开始 ===");
     if (!dockerfile) {
       setError('Dockerfile 不存在');
       return;
@@ -134,70 +180,90 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
       return;
     }
 
-    console.log("startBuild - imageName:", imageNameRef.current);
+    console.log("开始构建，参数：", {
+      dockerfileId: dockerfile.id,
+      imageName: imageNameRef.current.trim()
+    });
+    
     setLoading(true);
     setError('');
 
     try {
       // 第一阶段：克隆仓库
-      wsService.send({
+      const message = {
         docker_build_step: 'clone_repository',
         data: {
           id: dockerfile.id,
           docker_image_name: imageNameRef.current.trim(),
         },
-      });
+      };
+      console.log("发送消息:", message);
+      wsService.send(message);
       setCurrentStep(1);
     } catch (err) {
+      console.error("克隆仓库失败:", err);
       setError('克隆仓库过程中发生错误');
       setLoading(false);
       wsService.disconnect();
     }
+    console.log("=== startBuild 结束 ===");
   };
 
   const startCloneRepository = () => {
+    console.log("=== startCloneRepository 开始 ===");
     try {
-      console.log("startCloneRepository - imageName:", imageNameRef.current);
-      wsService.send({
+      const message = {
         docker_build_step: 'generate_dockerfile',
         data: {
           id: dockerfile?.id,
           docker_image_name: imageNameRef.current.trim(),
         },
-      });
+      };
+      console.log("发送消息:", message);
+      wsService.send(message);
     } catch (err) {
+      console.error("生成 Dockerfile 失败:", err);
       setError('生成 Dockerfile 过程中发生错误');
       setLoading(false);
       wsService.disconnect();
     }
+    console.log("=== startCloneRepository 结束 ===");
   };
 
   const startBuildImage = () => {
+    console.log("=== startBuildImage 开始 ===");
     const currentImageName = imageNameRef.current.trim();
-    console.log("startBuildImage - imageName:", currentImageName);
+    console.log("当前镜像名称:", currentImageName);
+    
     if (!dockerfile?.id) {
+      console.error("Dockerfile ID 不存在");
       setError('Dockerfile ID 不存在');
       return;
     }
 
     if (!currentImageName) {
+      console.error("镜像名称为空");
       setError('镜像名称不能为空');
       return;
     }
 
     try {
-      wsService.send({
+      const message = {
         docker_build_step: 'build_image',
         data: {
           id: dockerfile.id,
           docker_image_name: currentImageName,
         },
-      });
+      };
+      console.log("发送消息:", message);
+      wsService.send(message);
     } catch (err) {
+      console.error("构建镜像失败:", err);
       setError('构建镜像过程中发生错误');
       setLoading(false);
       wsService.disconnect();
     }
+    console.log("=== startBuildImage 结束 ===");
   };
 
   const handleCancel = () => {
@@ -232,6 +298,67 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
       description: '构建完成',
     },
   ];
+
+  const renderBuildMessage = (message: BuildMessage) => {
+    const { type, content } = message;
+    
+    // 处理构建步骤消息
+    if (content.includes('connect success')) {
+      return (
+        <div style={{ marginBottom: 8 }}>
+          <Tag color="blue">连接成功</Tag>
+        </div>
+      );
+    }
+    
+    if (content.includes('git clone success')) {
+      return (
+        <div style={{ marginBottom: 8 }}>
+          <Tag color="green">仓库克隆成功</Tag>
+        </div>
+      );
+    }
+    
+    if (content.includes('Dockerfile build success')) {
+      return (
+        <div style={{ marginBottom: 8 }}>
+          <Tag color="purple">Dockerfile 生成成功</Tag>
+        </div>
+      );
+    }
+    
+    if (content.includes('docker build & push success')) {
+      return (
+        <div style={{ marginBottom: 8 }}>
+          <Tag color="gold">镜像构建并推送成功</Tag>
+        </div>
+      );
+    }
+
+    // 处理构建过程消息
+    if (content.startsWith('#')) {
+      return (
+        <div style={{ 
+          marginBottom: 4,
+          fontFamily: 'monospace',
+          color: '#666',
+          fontSize: '13px'
+        }}>
+          {content}
+        </div>
+      );
+    }
+
+    // 处理其他消息
+    return (
+      <div style={{ 
+        marginBottom: 4,
+        color: type === 'error' ? '#ff4d4f' : '#666'
+      }}>
+        {content}
+      </div>
+    );
+  };
 
   return (
     <Modal
@@ -278,12 +405,20 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
         </Space>
 
         {buildOutput.length > 0 && (
-          <TextArea
-            value={buildOutput.join('\n')}
-            autoSize={{ minRows: 10, maxRows: 20 }}
-            readOnly
-            style={{ marginTop: 16, backgroundColor: '#f5f5f5' }}
-          />
+          <div style={{ 
+            marginTop: 16,
+            backgroundColor: '#f5f5f5',
+            padding: 16,
+            borderRadius: 4,
+            maxHeight: 400,
+            overflowY: 'auto'
+          }}>
+            {buildOutput.map((message, index) => (
+              <div key={index}>
+                {renderBuildMessage(message)}
+              </div>
+            ))}
+          </div>
         )}
 
         <div style={{ marginTop: 16, textAlign: 'right' }}>
