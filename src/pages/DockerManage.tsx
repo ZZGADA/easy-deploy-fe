@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Tree, Select, Button, Form, Input, message, Modal, Space, Card, List, Typography, AutoComplete } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined, GithubOutlined, ImportOutlined, BuildOutlined } from '@ant-design/icons';
-import { dockerfileService, DockerfileData, DockerfileItem, githubApi, githubService } from '../services/api';
+import { Tree, Select, Button, Form, Input, message, Modal, Space, Card, List, Typography, AutoComplete, Tag, Collapse } from 'antd';
+import { DeleteOutlined, EditOutlined, PlusOutlined, GithubOutlined, ImportOutlined, BuildOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { dockerfileService, DockerfileData, DockerfileItem, githubApi, githubService, dockerImageService, DockerImage } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import ImageBuildModal from '../components/ImageBuildModal';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Title, Text, Paragraph } = Typography;
@@ -45,6 +46,7 @@ const DockerManage: React.FC = () => {
   const [importContent, setImportContent] = useState('');
   const [isBuildModalVisible, setIsBuildModalVisible] = useState(false);
   const [selectedDockerfile, setSelectedDockerfile] = useState<DockerfileData | null>(null);
+  const [dockerImages, setDockerImages] = useState<Record<number, DockerImage[]>>({});
 
   // 获取开发者令牌和仓库列表
   useEffect(() => {
@@ -235,6 +237,57 @@ const DockerManage: React.FC = () => {
     setIsBuildModalVisible(true);
   };
 
+  // 获取 Docker 镜像列表
+  const fetchDockerImages = async (dockerfileId: number) => {
+    try {
+      const response = await dockerImageService.queryDockerImages({ dockerfile_id: dockerfileId });
+      if (response.code === 200 && response.data) {
+        setDockerImages(prev => ({
+          ...prev,
+          [dockerfileId]: response.data as DockerImage[]
+        }));
+      }
+    } catch (error) {
+      message.error('获取镜像列表失败');
+    }
+  };
+
+  // 在 Dockerfile 列表项中渲染镜像列表
+  const renderDockerImages = (dockerfile: DockerfileData) => {
+    const images = dockerImages[dockerfile.id || 0] || [];
+    
+    if (images.length === 0) {
+      return <Text type="secondary">暂未构建镜像</Text>;
+    }
+
+    return (
+      <List
+        size="small"
+        dataSource={images}
+        renderItem={(image, index) => (
+          <List.Item>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Space>
+                {index === 0 ? (
+                  <Tag color="green">最新构建</Tag>
+                ) : (
+                  <Tag color="default">历史版本</Tag>
+                )}
+                <Text strong>{image.full_image_name}</Text>
+              </Space>
+              <Space>
+                <Text type="secondary">镜像名称：{image.image_name}</Text>
+                <Text type="secondary">
+                  <ClockCircleOutlined /> 构建时间：{dayjs(image.created_at).format('YYYY-MM-DD HH:mm:ss')}
+                </Text>
+              </Space>
+            </Space>
+          </List.Item>
+        )}
+      />
+    );
+  };
+
   return (
       <div style={{ display: 'flex', height: '100%' }}>
         <div style={{ width: '20%', borderRight: '1px solid #f0f0f0', padding: '16px' }}>
@@ -329,7 +382,12 @@ const DockerManage: React.FC = () => {
                 renderItem={(dockerfile) => (
                     <List.Item>
                       <Card
-                          title={dockerfile.file_name}
+                          title={
+                            <Space>
+                              <span>{dockerfile.file_name}</span>
+                              <Tag color="blue">dockerfile_id: {dockerfile.id}</Tag>
+                            </Space>
+                          }
                           style={{ width: '100%', marginBottom: '16px' }}
                           extra={
                             <Space>
@@ -356,58 +414,89 @@ const DockerManage: React.FC = () => {
                             </Space>
                           }
                       >
-                  <pre style={{
-                    backgroundColor: '#282c34',
-                    padding: '16px',
-                    borderRadius: '6px',
-                    margin: 0,
-                    overflow: 'auto',
-                    fontFamily: 'Monaco, Menlo, Consolas, "Courier New", monospace',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }}>
-                    <code>
-                      {dockerfile.file_data.map((item, index) => {
-                        // 处理注释和命令
-                        if (item.dockerfile_key === '#') {
-                          // 渲染注释行（绿色）
-                          return (
-                              <div key={index} style={{ color: '#98c379' }}>
-                                # {item.shell_value}
-                              </div>
-                          );
-                        } else {
-                          // 处理命令行
-                          const isSpecialCommand = ['CMD', 'ENTRYPOINT', 'RUN'].includes(item.dockerfile_key);
-                          return (
-                              <div key={index}>
-                                {/* 关键字（蓝色） */}
-                                <span style={{ color: '#61afef' }}>
-                                {item.dockerfile_key}
-                              </span>
-                                {' '}
-                                {/* 命令参数（特殊命令使用橙色，其他使用默认色） */}
-                                <span style={{
-                                  color: isSpecialCommand ? '#d19a66' : '#abb2bf',
-                                }}>
-                                {item.shell_value}
-                              </span>
-                              </div>
-                          );
-                        }
-                      }).reduce((prev: React.ReactNode[], curr: React.ReactNode, i: number) => {
-                        // 在每个指令之间添加空行，除非当前行是注释且下一行也是注释
-                        const nextItem = dockerfile.file_data[i + 1];
-                        const currentIsComment = dockerfile.file_data[i].dockerfile_key === '#';
-                        const nextIsComment = nextItem && nextItem.dockerfile_key === '#';
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <pre style={{
+                            backgroundColor: '#282c34',
+                            padding: '16px',
+                            borderRadius: '6px',
+                            margin: 0,
+                            overflow: 'auto',
+                            fontFamily: 'Monaco, Menlo, Consolas, "Courier New", monospace',
+                            fontSize: '14px',
+                            lineHeight: '1.5',
+                          }}>
+                            <code>
+                              {dockerfile.file_data.map((item, index) => {
+                                // 处理注释和命令
+                                if (item.dockerfile_key === '#') {
+                                  // 渲染注释行（绿色）
+                                  return (
+                                      <div key={index} style={{ color: '#98c379' }}>
+                                        # {item.shell_value}
+                                      </div>
+                                  );
+                                } else {
+                                  // 处理命令行
+                                  const isSpecialCommand = ['CMD', 'ENTRYPOINT', 'RUN'].includes(item.dockerfile_key);
+                                  return (
+                                      <div key={index}>
+                                        {/* 关键字（蓝色） */}
+                                        <span style={{ color: '#61afef' }}>
+                                        {item.dockerfile_key}
+                                      </span>
+                                        {' '}
+                                        {/* 命令参数（特殊命令使用橙色，其他使用默认色） */}
+                                        <span style={{
+                                          color: isSpecialCommand ? '#d19a66' : '#abb2bf',
+                                        }}>
+                                        {item.shell_value}
+                                      </span>
+                                      </div>
+                                  );
+                                }
+                              }).reduce((prev: React.ReactNode[], curr: React.ReactNode, i: number) => {
+                                // 在每个指令之间添加空行，除非当前行是注释且下一行也是注释
+                                const nextItem = dockerfile.file_data[i + 1];
+                                const currentIsComment = dockerfile.file_data[i].dockerfile_key === '#';
+                                const nextIsComment = nextItem && nextItem.dockerfile_key === '#';
 
-                        if (currentIsComment && nextIsComment) {
-                          return [...prev, curr];
-                        }
-                        return [...prev, curr, <div key={`space-${i}`}>&nbsp;</div>];
-                      }, [])}
-                    </code>
-                  </pre>
+                                if (currentIsComment && nextIsComment) {
+                                  return [...prev, curr];
+                                }
+                                return [...prev, curr, <div key={`space-${i}`}>&nbsp;</div>];
+                              }, [])}
+                            </code>
+                          </pre>
+                          
+                          <Collapse
+                            onChange={(activeKeys) => {
+                              if (activeKeys.length > 0) {
+                                fetchDockerImages(dockerfile.id || 0);
+                              }
+                            }}
+                          >
+                            <Collapse.Panel 
+                              header={
+                                <Space>
+                                  <span>构建历史</span>
+                                  <Button 
+                                    type="text" 
+                                    icon={<ReloadOutlined />} 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      fetchDockerImages(dockerfile.id || 0);
+                                    }}
+                                  >
+                                    刷新
+                                  </Button>
+                                </Space>
+                              } 
+                              key="1"
+                            >
+                              {renderDockerImages(dockerfile)}
+                            </Collapse.Panel>
+                          </Collapse>
+                        </Space>
                       </Card>
                     </List.Item>
                 )}

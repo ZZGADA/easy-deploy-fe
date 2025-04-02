@@ -387,4 +387,35 @@ export const dockerAccountService = {
   },
 };
 
+// Docker 镜像相关接口
+export interface DockerImage {
+  id: number;
+  user_id: number;
+  dockerfile_id: number;
+  full_image_name: string;
+  image_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiResponse<T> {
+  code: number;
+  data: T;
+  message?: string;
+}
+
+export const dockerImageService = {
+  // 查询 Docker 镜像列表
+  queryDockerImages: async (params: { dockerfile_id: number }) => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/docker/images/query', {
+      params,
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  }
+};
+
 export default api; 
