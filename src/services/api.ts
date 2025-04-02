@@ -404,9 +404,14 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+export interface DockerImageQueryParams {
+  dockerfile_id?: number;
+  repository_id?: string;
+}
+
 export const dockerImageService = {
   // 查询 Docker 镜像列表
-  queryDockerImages: async (params: { dockerfile_id: number }) => {
+  queryDockerImages: async (params: DockerImageQueryParams) => {
     const token = localStorage.getItem('token');
     const response = await api.get('/api/user/docker/images/query', {
       params,
@@ -415,6 +420,58 @@ export const dockerImageService = {
       }
     });
     return response.data;
+  }
+};
+
+
+export interface K8sResource {
+  id: number;
+  user_id: number;
+  repository_id: string;
+  resource_type: string;
+  oss_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface K8sResourceService {
+  saveResource: (data: {
+    repository_id: string;
+    resource_type: string;
+    oss_url: string;
+  }) => Promise<ApiResponse<any>>;
+  queryResources: (params: {
+    repository_id: string;
+    resource_type: string;
+  }) => Promise<ApiResponse<K8sResource[]>>;
+  deleteResource: (data: { id: number }) => Promise<ApiResponse<any>>;
+}
+
+export const k8sResourceService: K8sResourceService = {
+  saveResource: (data) => {
+    const token = localStorage.getItem('token');
+    return api.post('/api/user/k8s/resource/save', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    }).then(response => response.data);
+  },
+  queryResources: (params) => {
+    const token = localStorage.getItem('token');
+    return api.get('/api/user/k8s/resource/query', {
+      params,
+      headers: {
+        'Authorization': `${token}`
+      }
+    }).then(response => response.data);
+  },
+  deleteResource: (data) => {
+    const token = localStorage.getItem('token');
+    return api.post('/api/user/k8s/resource/delete', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    }).then(response => response.data);
   }
 };
 

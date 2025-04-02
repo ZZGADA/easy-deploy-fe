@@ -44,6 +44,7 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
   const [imageName, setImageName] = useState('');
   const imageNameRef = useRef('');
   const [error, setError] = useState('');
+  const outputContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     imageNameRef.current = imageName;
@@ -72,6 +73,13 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
       };
     }
   }, [visible, dockerfile]);
+
+  // 添加自动滚动到底部的效果
+  useEffect(() => {
+    if (outputContainerRef.current) {
+      outputContainerRef.current.scrollTop = outputContainerRef.current.scrollHeight;
+    }
+  }, [buildOutput]);
 
   const handleWebSocketError = (error: string) => {
     setError(error);
@@ -405,14 +413,17 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
         </Space>
 
         {buildOutput.length > 0 && (
-          <div style={{ 
-            marginTop: 16,
-            backgroundColor: '#f5f5f5',
-            padding: 16,
-            borderRadius: 4,
-            maxHeight: 400,
-            overflowY: 'auto'
-          }}>
+          <div 
+            ref={outputContainerRef}
+            style={{ 
+              marginTop: 16,
+              backgroundColor: '#f5f5f5',
+              padding: 16,
+              borderRadius: 4,
+              maxHeight: 400,
+              overflowY: 'auto'
+            }}
+          >
             {buildOutput.map((message, index) => (
               <div key={index}>
                 {renderBuildMessage(message)}

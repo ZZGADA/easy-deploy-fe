@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout, Menu } from 'antd';
-import { UserOutlined, TeamOutlined, CodeOutlined, ContainerOutlined } from '@ant-design/icons';
+import { UserOutlined, TeamOutlined, CodeOutlined, ContainerOutlined, CloudOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const { Sider, Content } = Layout;
@@ -29,6 +29,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       key: '/easy-deploy/docker',
       icon: <ContainerOutlined />,
       label: '镜像管理',
+    },
+    {
+      key: '/easy-deploy/kubernetes',
+      icon: <CloudOutlined />,
+      label: 'Kubernetes部署',
     },
   ];
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -7,6 +7,7 @@ import Profile from './pages/Profile';
 import Team from './pages/Team';
 import Repositories from './pages/Repositories';
 import DockerManage from './pages/DockerManage';
+import KubernetesDeploy from './pages/KubernetesDeploy';
 import { authService } from './services/api';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -54,6 +55,13 @@ const App: React.FC = () => {
             </PrivateRoute>
           }
         />
+        <Route
+          path="/easy-deploy/kubernetes"
+          element={
+            <PrivateRoute>
+              <KubernetesDeploy />
+            </PrivateRoute>
+          }/>
         <Route path="/" element={<Navigate to="/easy-deploy/login" />} />
       </Routes>
     </Router>
