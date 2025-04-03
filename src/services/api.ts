@@ -475,4 +475,70 @@ export const k8sResourceService: K8sResourceService = {
   }
 };
 
-export default api; 
+export default api;
+
+// OSS 账号相关类型定义
+export interface OssAccount {
+  id: number;
+  user_id: number;
+  access_key_id: string;
+  access_key_secret: string;
+  bucket: string;
+  region: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OssAccountRequest {
+  access_key_id: string;
+  access_key_secret: string;
+  bucket: string;
+  region: string;
+}
+
+// OSS 账号服务
+export const ossAccountService = {
+  // 保存 OSS 账号
+  saveOssAccount: async (data: OssAccountRequest): Promise<ApiResponse<null>> => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/oss/access/save', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 更新 OSS 账号
+  updateOssAccount: async (data: OssAccountRequest): Promise<ApiResponse<null>> => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/oss/access/update', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 查询 OSS 账号
+  queryOssAccount: async (): Promise<ApiResponse<OssAccount>> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/oss/access/query', {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 删除 OSS 账号
+  deleteOssAccount: async (): Promise<ApiResponse<null>> => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/oss/access/delete', {}, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+}; 

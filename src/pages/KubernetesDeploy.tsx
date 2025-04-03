@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table } from 'antd';
-import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined } from '@ant-design/icons';
-import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource } from '../services/api';
+import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert } from 'antd';
+import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
+import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import OSS from 'ali-oss';
 import dayjs from 'dayjs';
+import SyntaxHighlighter from 'react-syntax-highlighter';
+import { docco } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -31,64 +33,105 @@ const KubernetesDeploy: React.FC = () => {
   const [configLoading, setConfigLoading] = useState(false);
   const [k8sResources, setK8sResources] = useState<K8sResource[]>([]);
   const [resourceLoading, setResourceLoading] = useState(false);
+  const [ossClient, setOssClient] = useState<OSS | null>(null);
+  const [ossLoading, setOssLoading] = useState(false);
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [previewContent, setPreviewContent] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewFileName, setPreviewFileName] = useState('');
 
-  // 检查环境变量是否存在
-  const ossConfig = {
-    region: process.env.REACT_APP_OSS_REGION,
-    accessKeyId: process.env.REACT_APP_OSS_ACCESS_KEY_ID,
-    accessKeySecret: process.env.REACT_APP_OSS_ACCESS_KEY_SECRET,
-    bucket: process.env.REACT_APP_OSS_BUCKET
+  // 初始化 OSS 客户端
+  const initOssClient = async () => {
+    try {
+      setOssLoading(true);
+      const response = await ossAccountService.queryOssAccount();
+      if (response.code === 200 && response.data) {
+        const ossConfig = response.data;
+        const client = new OSS({
+          region: ossConfig.region,
+          accessKeyId: ossConfig.access_key_id,
+          accessKeySecret: ossConfig.access_key_secret,
+          bucket: ossConfig.bucket,
+          secure: true
+        });
+        setOssClient(client);
+      } else {
+        message.error('获取 OSS 配置失败');
+      }
+    } catch (error) {
+      console.error('初始化 OSS 客户端失败:', error);
+      message.error('初始化 OSS 客户端失败');
+    } finally {
+      setOssLoading(false);
+    }
   };
 
-  // 验证所有必需的配置是否存在
-  if (!ossConfig.region || !ossConfig.accessKeyId || !ossConfig.accessKeySecret || !ossConfig.bucket) {
-    console.error('OSS 配置不完整，请检查环境变量');
+  // 获取开发者令牌和仓库列表
+  const fetchRepositories = async () => {
+    try {
+      // 获取开发者令牌
+      const tokenResponse = await githubService.queryDeveloperToken();
+      if (!tokenResponse.data || !tokenResponse.data.developer_token) {
+        message.error('请先在个人中心绑定 GitHub 开发者令牌');
+        navigate('/easy-deploy/profile');
+        return;
+      }
+
+      // 设置 GitHub API 的认证头
+      githubApi.defaults.headers.common['Authorization'] = `Bearer ${tokenResponse.data.developer_token}`;
+
+      // 获取仓库列表
+      const response = await githubApi.get('/user/repos');
+      const repos = await Promise.all(response.data.map(async (repo: any) => {
+        const branchesResponse = await githubApi.get(`/repos/${repo.full_name}/branches`);
+        return {
+          id: repo.id.toString(),
+          name: repo.name,
+          description: repo.description,
+          branches: branchesResponse.data.map((branch: any) => branch.name)
+        };
+      }));
+
+      setRepositories(repos);
+    } catch (error) {
+      message.error('获取数据失败，请确保已正确设置 GitHub 开发者令牌');
+      navigate('/easy-deploy/profile');
+    }
+  };
+
+  // 监听 k8sResources 的变化
+  useEffect(() => {
+    console.log('Current k8sResources:', k8sResources);
+  }, [k8sResources]);
+
+  // 初始化 OSS 客户端和获取仓库列表
+  useEffect(() => {
+    initOssClient();
+    fetchRepositories();
+  }, [navigate]);
+
+  // 渲染加载状态
+  if (ossLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <LoadingOutlined style={{ fontSize: 24 }} spin />
+      </div>
+    );
   }
 
-  const client = new OSS({
-    region: ossConfig.region as string,
-    accessKeyId: ossConfig.accessKeyId as string,
-    accessKeySecret: ossConfig.accessKeySecret as string,
-    bucket: ossConfig.bucket as string,
-    secure: true as boolean
-  });
-
-  // 获取开发者令牌和仓库列表
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 获取开发者令牌
-        const tokenResponse = await githubService.queryDeveloperToken();
-        if (!tokenResponse.data || !tokenResponse.data.developer_token) {
-          message.error('请先在个人中心绑定 GitHub 开发者令牌');
-          navigate('/easy-deploy/profile');
-          return;
-        }
-
-        // 设置 GitHub API 的认证头
-        githubApi.defaults.headers.common['Authorization'] = `Bearer ${tokenResponse.data.developer_token}`;
-
-        // 获取仓库列表
-        const response = await githubApi.get('/user/repos');
-        const repos = await Promise.all(response.data.map(async (repo: any) => {
-          const branchesResponse = await githubApi.get(`/repos/${repo.full_name}/branches`);
-          return {
-            id: repo.id.toString(),
-            name: repo.name,
-            description: repo.description,
-            branches: branchesResponse.data.map((branch: any) => branch.name)
-          };
-        }));
-
-        setRepositories(repos);
-      } catch (error) {
-        message.error('获取数据失败，请确保已正确设置 GitHub 开发者令牌');
-        navigate('/easy-deploy/profile');
-      }
-    };
-
-    fetchData();
-  }, [navigate]);
+  // 渲染 OSS 未配置状态
+  if (!ossClient) {
+    return (
+      <div style={{ textAlign: 'center', padding: '24px' }}>
+        <Alert
+          message="OSS 配置未完成"
+          description="请先在个人中心配置 OSS 账号信息"
+          type="warning"
+          showIcon
+        />
+      </div>
+    );
+  }
 
   // 获取 Docker 镜像列表
   const fetchDockerImages = async (repositoryId: string) => {
@@ -185,7 +228,7 @@ const KubernetesDeploy: React.FC = () => {
       // 创建 Blob 对象
       const blob = new Blob([config], { type: 'text/yaml' });
       
-      const result = await client.put(objectName, blob);
+      const result = await ossClient.put(objectName, blob);
       
       // 保存配置到后端
       const selectedRepository = repositories.find(r => r.name === selectedRepo);
@@ -223,6 +266,53 @@ const KubernetesDeploy: React.FC = () => {
     }
   };
 
+  // 处理文件预览
+  const handlePreviewFile = async (url: string) => {
+    try {
+      setPreviewLoading(true);
+      setPreviewModalVisible(true);
+      
+      // 从 URL 中提取文件名
+      const fileName = url.split('/').pop() || '';
+      setPreviewFileName(fileName);
+      
+      // 从 URL 中提取 object-name
+      const objectName = url.split('/').slice(-3).join('/');
+      console.log("objectName",objectName)
+      
+      // 获取文件内容
+      const result = await ossClient.get(objectName);
+      setPreviewContent(result.content.toString());
+    } catch (error) {
+      console.error('获取文件内容失败:', error);
+      message.error('获取文件内容失败');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // 获取文件类型
+  const getFileType = (fileName: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case 'yaml':
+      case 'yml':
+        return 'yaml';
+      case 'json':
+        return 'json';
+      case 'js':
+        return 'javascript';
+      case 'ts':
+        return 'typescript';
+      case 'py':
+        return 'python';
+      case 'sh':
+        return 'bash';
+      default:
+        return 'text';
+    }
+  };
+
   // 配置列表列定义
   const columns = [
     {
@@ -240,9 +330,12 @@ const KubernetesDeploy: React.FC = () => {
       dataIndex: 'oss_url',
       key: 'oss_url',
       render: (url: string) => (
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          {url}
-        </a>
+        <Button
+          type="link"
+          onClick={() => handlePreviewFile(url)}
+        >
+          查看文件
+        </Button>
       )
     },
     {
@@ -266,11 +359,6 @@ const KubernetesDeploy: React.FC = () => {
       )
     }
   ];
-
-  // 添加 useEffect 来监听 k8sResources 的变化
-  useEffect(() => {
-    console.log('Current k8sResources:', k8sResources);
-  }, [k8sResources]);
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -443,6 +531,36 @@ const KubernetesDeploy: React.FC = () => {
           placeholder="请输入 Service 配置（YAML 格式）"
           style={{ fontFamily: 'monospace' }}
         />
+      </Modal>
+
+      {/* 文件预览 Modal */}
+      <Modal
+        title={`文件预览 - ${previewFileName}`}
+        open={previewModalVisible}
+        onCancel={() => setPreviewModalVisible(false)}
+        width={800}
+        footer={null}
+        destroyOnClose
+      >
+        {previewLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+            <LoadingOutlined style={{ fontSize: 24 }} spin />
+          </div>
+        ) : (
+          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <SyntaxHighlighter
+              language={getFileType(previewFileName)}
+              style={docco}
+              customStyle={{
+                margin: 0,
+                padding: '16px',
+                borderRadius: '4px'
+              }}
+            >
+              {previewContent}
+            </SyntaxHighlighter>
+          </div>
+        )}
       </Modal>
     </div>
   );

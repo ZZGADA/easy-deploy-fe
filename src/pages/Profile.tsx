@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Button, message, Space, Typography, Divider, Avatar, Descriptions, Form, Input, DatePicker, Table, Modal, Tag } from 'antd';
-import { GithubOutlined, LoadingOutlined, EditOutlined, PlusOutlined, DeleteOutlined, StarOutlined, LoginOutlined } from '@ant-design/icons';
-import { githubService, GithubUserInfo, DeveloperTokenRequest, DeveloperTokenResponse, dockerAccountService, DockerAccount, DockerAccountRequest } from '../services/api';
+import { GithubOutlined, LoadingOutlined, EditOutlined, PlusOutlined, DeleteOutlined, StarOutlined, LoginOutlined, CloudOutlined } from '@ant-design/icons';
+import { githubService, GithubUserInfo, DeveloperTokenRequest, DeveloperTokenResponse, dockerAccountService, DockerAccount, DockerAccountRequest, ossAccountService, OssAccount, OssAccountRequest } from '../services/api';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import locale from 'antd/es/date-picker/locale/zh_CN';
@@ -22,6 +22,10 @@ const Profile: React.FC = () => {
   const [isDockerModalVisible, setIsDockerModalVisible] = useState(false);
   const [editingDockerAccount, setEditingDockerAccount] = useState<DockerAccount | null>(null);
   const [dockerForm] = Form.useForm();
+  const [ossAccount, setOssAccount] = useState<OssAccount | null>(null);
+  const [ossLoading, setOssLoading] = useState(false);
+  const [isOssModalVisible, setIsOssModalVisible] = useState(false);
+  const [ossForm] = Form.useForm();
 
   const isFieldDisabled = Boolean(tokenInfo && !isEditing);
   const fieldBackgroundColor = isFieldDisabled ? '#f5f5f5' : 'white';
@@ -346,6 +350,78 @@ const Profile: React.FC = () => {
     },
   ];
 
+  // 获取 OSS 账号信息
+  const fetchOssAccount = async () => {
+    try {
+      setOssLoading(true);
+      const response = await ossAccountService.queryOssAccount();
+      console.log('ossAccount-1',response);
+      if (response.code === 200 && response.data) {
+        console.log('ossAccount-2',response.data);
+        setOssAccount(response.data);
+        ossForm.setFieldsValue({
+          access_key_id: response.data.access_key_id,
+          access_key_secret: response.data.access_key_secret,
+          bucket: response.data.bucket,
+          region: response.data.region,
+        });
+      }
+    } catch (error) {
+      message.error('获取 OSS 账号信息失败');
+    } finally {
+      setOssLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOssAccount();
+  }, []);
+
+  // 处理 OSS 账号表单提交
+  const handleOssSubmit = async (values: OssAccountRequest) => {
+    try {
+      setOssLoading(true);
+      if (ossAccount) {
+        const response = await ossAccountService.updateOssAccount(values);
+        if (response.code === 200) {
+          message.success('OSS 账号更新成功');
+          await fetchOssAccount(); // 更新成功后重新查询
+        } else {
+          message.error(response.message || '更新失败');
+        }
+      } else {
+        const response = await ossAccountService.saveOssAccount(values);
+        if (response.code === 200) {
+          message.success('OSS 账号添加成功');
+          await fetchOssAccount(); // 保存成功后重新查询
+        } else {
+          message.error(response.message || '添加失败');
+        }
+      }
+      setIsOssModalVisible(false);
+    } catch (error) {
+      message.error('操作失败');
+    } finally {
+      setOssLoading(false);
+    }
+  };
+
+  // 处理删除 OSS 账号
+  const handleDeleteOss = async () => {
+    try {
+      const response = await ossAccountService.deleteOssAccount();
+      if (response.code === 200) {
+        message.success('OSS 账号删除成功');
+        setOssAccount(null);
+        ossForm.resetFields();
+      } else {
+        message.error(response.message || '删除失败');
+      }
+    } catch (error) {
+      message.error('删除失败');
+    }
+  };
+
   return (
     <div style={{
       padding: '24px',
@@ -499,6 +575,140 @@ const Profile: React.FC = () => {
                   setIsDockerModalVisible(false);
                   setEditingDockerAccount(null);
                   dockerForm.resetFields();
+                }}>
+                  取消
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {/* OSS 账号管理部分 */}
+        <Divider />
+        <div style={{ marginBottom: '24px' }}>
+          <Space style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+            <Title level={4}>
+              <CloudOutlined style={{ marginRight: '8px' }} />
+              OSS 账号管理
+            </Title>
+            <Space>
+              {ossAccount ? (
+                <>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleDeleteOss}
+                  >
+                    删除账号
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<EditOutlined />}
+                    onClick={() => {
+                      setIsOssModalVisible(true);
+                    }}
+                  >
+                    编辑账号
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    setIsOssModalVisible(true);
+                  }}
+                >
+                  添加账号
+                </Button>
+              )}
+            </Space>
+          </Space>
+
+          {ossAccount ? (
+            <Descriptions bordered>
+              <Descriptions.Item label="Access Key ID" span={3}>
+                {ossAccount.access_key_id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Access Key Secret" span={3}>
+                {ossAccount.access_key_secret}
+              </Descriptions.Item>
+              <Descriptions.Item label="Bucket" span={3}>
+                {ossAccount.bucket}
+              </Descriptions.Item>
+              <Descriptions.Item label="Region" span={3}>
+                {ossAccount.region}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间" span={3}>
+                {dayjs(ossAccount.created_at).format('YYYY-MM-DD HH:mm:ss')}
+              </Descriptions.Item>
+              <Descriptions.Item label="更新时间" span={3}>
+                {dayjs(ossAccount.updated_at).format('YYYY-MM-DD HH:mm:ss')}
+              </Descriptions.Item>
+            </Descriptions>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '24px', background: '#fafafa' }}>
+              暂无 OSS 账号信息
+            </div>
+          )}
+        </div>
+
+        {/* OSS 账号表单模态框 */}
+        <Modal
+          title={`${ossAccount ? '编辑' : '添加'} OSS 账号`}
+          open={isOssModalVisible}
+          onCancel={() => {
+            setIsOssModalVisible(false);
+            ossForm.resetFields();
+            fetchOssAccount(); // 关闭模态框时重新查询
+          }}
+          footer={null}
+        >
+          <Form
+            form={ossForm}
+            layout="vertical"
+            onFinish={handleOssSubmit}
+          >
+            <Form.Item
+              name="access_key_id"
+              label="Access Key ID"
+              rules={[{ required: true, message: '请输入 Access Key ID' }]}
+            >
+              <Input placeholder="请输入 Access Key ID" />
+            </Form.Item>
+
+            <Form.Item
+              name="access_key_secret"
+              label="Access Key Secret"
+              rules={[{ required: true, message: '请输入 Access Key Secret' }]}
+            >
+              <Input.Password placeholder="请输入 Access Key Secret" />
+            </Form.Item>
+
+            <Form.Item
+              name="bucket"
+              label="Bucket"
+              rules={[{ required: true, message: '请输入 Bucket 名称' }]}
+            >
+              <Input placeholder="请输入 Bucket 名称" />
+            </Form.Item>
+
+            <Form.Item
+              name="region"
+              label="Region"
+              rules={[{ required: true, message: '请输入 Region' }]}
+            >
+              <Input placeholder="请输入 Region" />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit" loading={ossLoading}>
+                  {ossAccount ? '保存修改' : '添加账号'}
+                </Button>
+                <Button onClick={() => {
+                  setIsOssModalVisible(false);
+                  ossForm.resetFields();
                 }}>
                   取消
                 </Button>
