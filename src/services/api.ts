@@ -423,13 +423,12 @@ export const dockerImageService = {
   }
 };
 
-
 export interface K8sResource {
   id: number;
-  user_id: number;
   repository_id: string;
   resource_type: string;
   oss_url: string;
+  file_name: string;
   created_at: string;
   updated_at: string;
 }
@@ -439,12 +438,20 @@ export interface K8sResourceService {
     repository_id: string;
     resource_type: string;
     oss_url: string;
-  }) => Promise<ApiResponse<any>>;
+    file_name: string;
+  }) => Promise<K8sResource>;
   queryResources: (params: {
     repository_id: string;
     resource_type: string;
   }) => Promise<ApiResponse<K8sResource[]>>;
   deleteResource: (data: { id: number }) => Promise<ApiResponse<any>>;
+  updateResource: (data: {
+    id: number;
+    repository_id: string;
+    resource_type: string;
+    oss_url: string;
+    file_name: string;
+  }) => Promise<K8sResource>;
 }
 
 export const k8sResourceService: K8sResourceService = {
@@ -468,6 +475,14 @@ export const k8sResourceService: K8sResourceService = {
   deleteResource: (data) => {
     const token = localStorage.getItem('token');
     return api.post('/api/user/k8s/resource/delete', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    }).then(response => response.data);
+  },
+  updateResource: (data) => {
+    const token = localStorage.getItem('token');
+    return api.post('/api/user/k8s/resource/update', data, {
       headers: {
         'Authorization': `${token}`
       }

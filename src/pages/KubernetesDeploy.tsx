@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert } from 'antd';
-import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert, Row, Col, Form } from 'antd';
+import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService } from '../services/api';
+import { WebSocketK8sService, K8sWsResponse } from '../services/websocketK8s';
 import { useNavigate } from 'react-router-dom';
 import OSS from 'ali-oss';
 import dayjs from 'dayjs';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { docco } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import Editor from '@monaco-editor/react';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -30,6 +32,8 @@ const KubernetesDeploy: React.FC = () => {
   const [serviceModalVisible, setServiceModalVisible] = useState(false);
   const [deploymentConfig, setDeploymentConfig] = useState('');
   const [serviceConfig, setServiceConfig] = useState('');
+  const [deploymentFileName, setDeploymentFileName] = useState('');
+  const [serviceFileName, setServiceFileName] = useState('');
   const [configLoading, setConfigLoading] = useState(false);
   const [k8sResources, setK8sResources] = useState<K8sResource[]>([]);
   const [resourceLoading, setResourceLoading] = useState(false);
@@ -39,6 +43,17 @@ const KubernetesDeploy: React.FC = () => {
   const [previewContent, setPreviewContent] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFileName, setPreviewFileName] = useState('');
+  const [previewResourceId, setPreviewResourceId] = useState<number | null>(null);
+  const [previewResourceType, setPreviewResourceType] = useState<string>('');
+  const [previewOssUrl, setPreviewOssUrl] = useState<string>('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [wsService, setWsService] = useState<WebSocketK8sService | null>(null);
+  const [wsMessages, setWsMessages] = useState<Array<{ command: string; result: string }>>([]);
+  const [customCommand, setCustomCommand] = useState('');
+  const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const token = localStorage.getItem('token') || '';
 
   // 初始化 OSS 客户端
   const initOssClient = async () => {
@@ -109,6 +124,57 @@ const KubernetesDeploy: React.FC = () => {
     initOssClient();
     fetchRepositories();
   }, [navigate]);
+
+  // 初始化 WebSocket 服务
+  const initWebSocket = () => {
+    if (token) {
+      setWsStatus('connecting');
+      const service = new WebSocketK8sService(token);
+      service.setMessageCallback((response: K8sWsResponse) => {
+        if (response.success && response.data) {
+          const { command, result } = response.data;
+          setWsMessages(prev => [...prev, { command, result }]);
+          setWsStatus('connected');
+        } else {
+          message.error(response.message || '命令执行失败');
+          setWsStatus('failed');
+        }
+      });
+      setWsService(service);
+    }
+  };
+
+  // 重新连接 WebSocket
+  const reconnectWebSocket = () => {
+    if (wsService) {
+      wsService.close();
+    }
+    initWebSocket();
+  };
+
+  // 组件卸载时关闭 WebSocket 连接
+  useEffect(() => {
+    return () => {
+      if (wsService) {
+        wsService.close();
+      }
+    };
+  }, [wsService]);
+
+  // 自动滚动到底部
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [wsMessages]);
+
+  // 解除 WebSocket 连接
+  const disconnectWebSocket = () => {
+    if (wsService) {
+      wsService.close();
+      setWsService(null);
+      setWsStatus('disconnected');
+      setWsMessages([]);
+    }
+  };
 
   // 渲染加载状态
   if (ossLoading) {
@@ -187,6 +253,15 @@ const KubernetesDeploy: React.FC = () => {
     setServiceConfig('');
     setK8sResources([]);
     
+    // 清空 WebSocket 相关状态
+    if (wsService) {
+      wsService.close();
+      setWsService(null);
+    }
+    setWsStatus('disconnected');
+    setWsMessages([]);
+    setCustomCommand('');
+    
     const selectedRepository = repositories.find(r => r.name === repo);
     if (selectedRepository) {
       fetchDockerImages(selectedRepository.id);
@@ -219,6 +294,12 @@ const KubernetesDeploy: React.FC = () => {
       return;
     }
 
+    const fileName = type === 'deployment' ? deploymentFileName : serviceFileName;
+    if (!fileName) {
+      message.error('请输入文件名');
+      return;
+    }
+
     try {
       setConfigLoading(true);
       const config = type === 'deployment' ? deploymentConfig : serviceConfig;
@@ -236,7 +317,8 @@ const KubernetesDeploy: React.FC = () => {
         await k8sResourceService.saveResource({
           repository_id: selectedRepository.id,
           resource_type: type,
-          oss_url: result.url
+          oss_url: result.url,
+          file_name: fileName
         });
         
         message.success(`${type === 'deployment' ? 'Deployment' : 'Service'} 配置保存成功`);
@@ -267,25 +349,73 @@ const KubernetesDeploy: React.FC = () => {
   };
 
   // 处理文件预览
-  const handlePreviewFile = async (url: string) => {
+  const handlePreviewFile = async (url: string, id: number, type: string, fileName: string) => {
     try {
       setPreviewLoading(true);
       setPreviewModalVisible(true);
-      
-      // 从 URL 中提取文件名
-      const fileName = url.split('/').pop() || '';
       setPreviewFileName(fileName);
+      setPreviewResourceId(id);
+      setPreviewResourceType(type);
+      setPreviewOssUrl(url);
+      setIsEditing(false);
       
       // 从 URL 中提取 object-name
       const objectName = url.split('/').slice(-3).join('/');
-      console.log("objectName",objectName)
       
       // 获取文件内容
       const result = await ossClient.get(objectName);
       setPreviewContent(result.content.toString());
+      setEditContent(result.content.toString());
     } catch (error) {
       console.error('获取文件内容失败:', error);
       message.error('获取文件内容失败');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // 处理文件编辑保存
+  const handleSaveEdit = async () => {
+    if (!previewResourceId || !previewOssUrl || !previewFileName) {
+      message.error('缺少必要信息');
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+      
+      // 从 URL 中提取 object-name
+      const objectName = previewOssUrl.split('/').slice(-3).join('/');
+      
+      // 创建 Blob 对象
+      const blob = new Blob([editContent], { type: 'text/yaml' });
+      
+      // 上传到 OSS
+      const result = await ossClient.put(objectName, blob);
+      
+      // 更新后端
+      const selectedRepository = repositories.find(r => r.name === selectedRepo);
+      if (selectedRepository) {
+        await k8sResourceService.updateResource({
+          id: previewResourceId,
+          repository_id: selectedRepository.id,
+          resource_type: previewResourceType,
+          oss_url: result.url,
+          file_name: previewFileName
+        });
+        
+        message.success('文件更新成功');
+        setIsEditing(false);
+        
+        // 更新预览内容
+        setPreviewContent(editContent);
+        
+        // 刷新配置列表
+        fetchK8sResources(selectedRepository.id, 'all');
+      }
+    } catch (error) {
+      console.error('更新文件失败:', error);
+      message.error('更新文件失败');
     } finally {
       setPreviewLoading(false);
     }
@@ -326,13 +456,18 @@ const KubernetesDeploy: React.FC = () => {
       )
     },
     {
+      title: '文件名',
+      dataIndex: 'file_name',
+      key: 'file_name',
+    },
+    {
       title: 'OSS URL',
       dataIndex: 'oss_url',
       key: 'oss_url',
-      render: (url: string) => (
+      render: (url: string, record: K8sResource) => (
         <Button
           type="link"
-          onClick={() => handlePreviewFile(url)}
+          onClick={() => handlePreviewFile(url, record.id, record.resource_type, record.file_name)}
         >
           查看文件
         </Button>
@@ -359,6 +494,31 @@ const KubernetesDeploy: React.FC = () => {
       )
     }
   ];
+
+  // 常用命令按钮
+  const commonCommands = [
+    { label: '查看所有 Pod', command: 'kubectl get pod -A' },
+    { label: '查看所有 Service', command: 'kubectl get svc -A' },
+    { label: '查看所有 Deployment', command: 'kubectl get deployment -A' },
+    { label: '查看所有 Namespace', command: 'kubectl get namespace' },
+    { label: '查看集群信息', command: 'kubectl cluster-info' },
+    { label: '查看节点状态', command: 'kubectl get nodes' },
+  ];
+
+  // 执行命令
+  const executeCommand = (command: string) => {
+    if (wsService) {
+      wsService.sendCommand(command);
+    }
+  };
+
+  // 处理自定义命令提交
+  const handleCommandSubmit = () => {
+    if (customCommand.trim()) {
+      executeCommand(customCommand.trim());
+      setCustomCommand('');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -489,6 +649,107 @@ const KubernetesDeploy: React.FC = () => {
                 />
               </Space>
             </Card>
+
+            {/* Kubernetes 控制面板 */}
+            <Card 
+              title={
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <span>Kubernetes 控制面板</span>
+                  <Space>
+                    {wsStatus === 'disconnected' && (
+                      <Button type="primary" onClick={initWebSocket}>
+                        远程连接
+                      </Button>
+                    )}
+                    {wsStatus === 'connecting' && (
+                      <Button type="primary" loading>
+                        连接中...
+                      </Button>
+                    )}
+                    {wsStatus === 'connected' && (
+                      <Space>
+                        <Button type="primary" onClick={reconnectWebSocket}>
+                          重新连接
+                        </Button>
+                        <Button type="default" danger onClick={disconnectWebSocket}>
+                          断开连接
+                        </Button>
+                      </Space>
+                    )}
+                    {wsStatus === 'failed' && (
+                      <Button type="primary" danger onClick={reconnectWebSocket}>
+                        连接失败，重试
+                      </Button>
+                    )}
+                  </Space>
+                </Space>
+              }
+            >
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {/* 上层：常用命令按钮 */}
+                <Row gutter={[8, 8]}>
+                  {commonCommands.map((cmd, index) => (
+                    <Col key={index}>
+                      <Button
+                        type="primary"
+                        onClick={() => executeCommand(cmd.command)}
+                      >
+                        {cmd.label}
+                      </Button>
+                    </Col>
+                  ))}
+                </Row>
+
+                {/* 中层：自定义命令输入 */}
+                <Space.Compact style={{ width: '100%', marginTop: '16px' }}>
+                  <Input
+                    placeholder="请输入 kubectl 命令"
+                    value={customCommand}
+                    onChange={(e) => setCustomCommand(e.target.value)}
+                    onPressEnter={handleCommandSubmit}
+                    style={{ width: 'calc(100% - 100px)' }}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<PlayCircleOutlined />}
+                    onClick={handleCommandSubmit}
+                  >
+                    执行
+                  </Button>
+                </Space.Compact>
+
+                {/* 下层：消息展示区域 */}
+                <div
+                  style={{
+                    marginTop: '16px',
+                    height: '400px',
+                    overflow: 'auto',
+                    backgroundColor: '#f5f5f5',
+                    padding: '16px',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {wsMessages.map((msg, index) => (
+                    <div key={index} style={{ marginBottom: '16px' }}>
+                      <div style={{ color: '#1890ff', marginBottom: '8px', whiteSpace: 'pre-wrap' }}>
+                        $ {msg.command}
+                      </div>
+                      <pre style={{ 
+                        color: '#333', 
+                        margin: 0, 
+                        padding: 0, 
+                        overflow: 'auto',
+                        maxWidth: 'none'
+                      }}>
+                        {msg.result}
+                      </pre>
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              </Space>
+            </Card>
           </Space>
         ) : (
           <div style={{ textAlign: 'center', padding: '24px' }}>
@@ -506,13 +767,43 @@ const KubernetesDeploy: React.FC = () => {
         width={800}
         confirmLoading={configLoading}
       >
-        <TextArea
-          rows={20}
-          value={deploymentConfig}
-          onChange={(e) => setDeploymentConfig(e.target.value)}
-          placeholder="请输入 Deployment 配置（YAML 格式）"
-          style={{ fontFamily: 'monospace' }}
-        />
+        <Form layout="vertical">
+          <Form.Item label="文件名" required>
+            <Input 
+              placeholder="请输入文件名（不含扩展名）" 
+              value={deploymentFileName}
+              onChange={(e) => setDeploymentFileName(e.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="YAML 配置" required>
+            <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', height: '400px' }}>
+              <Editor
+                height="400px"
+                defaultLanguage="yaml"
+                value={deploymentConfig}
+                onChange={(value) => setDeploymentConfig(value || '')}
+                theme="vs-light"
+                options={{
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 14,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                  automaticLayout: true
+                }}
+                loading={<div>加载中...</div>}
+                beforeMount={(monaco) => {
+                  monaco.editor.defineTheme('vs-light', {
+                    base: 'vs',
+                    inherit: true,
+                    rules: [],
+                    colors: {}
+                  });
+                }}
+              />
+            </div>
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* Service 配置 Modal */}
@@ -524,13 +815,43 @@ const KubernetesDeploy: React.FC = () => {
         width={800}
         confirmLoading={configLoading}
       >
-        <TextArea
-          rows={20}
-          value={serviceConfig}
-          onChange={(e) => setServiceConfig(e.target.value)}
-          placeholder="请输入 Service 配置（YAML 格式）"
-          style={{ fontFamily: 'monospace' }}
-        />
+        <Form layout="vertical">
+          <Form.Item label="文件名" required>
+            <Input 
+              placeholder="请输入文件名（不含扩展名）" 
+              value={serviceFileName}
+              onChange={(e) => setServiceFileName(e.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="YAML 配置" required>
+            <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', height: '400px' }}>
+              <Editor
+                height="400px"
+                defaultLanguage="yaml"
+                value={serviceConfig}
+                onChange={(value) => setServiceConfig(value || '')}
+                theme="vs-light"
+                options={{
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 14,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                  automaticLayout: true
+                }}
+                loading={<div>加载中...</div>}
+                beforeMount={(monaco) => {
+                  monaco.editor.defineTheme('vs-light', {
+                    base: 'vs',
+                    inherit: true,
+                    rules: [],
+                    colors: {}
+                  });
+                }}
+              />
+            </div>
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* 文件预览 Modal */}
@@ -539,17 +860,61 @@ const KubernetesDeploy: React.FC = () => {
         open={previewModalVisible}
         onCancel={() => setPreviewModalVisible(false)}
         width={800}
-        footer={null}
+        footer={isEditing ? [
+          <Button key="cancel" onClick={() => setIsEditing(false)}>
+            取消
+          </Button>,
+          <Button 
+            key="save" 
+            type="primary" 
+            icon={<SaveOutlined />} 
+            onClick={handleSaveEdit}
+            loading={previewLoading}
+          >
+            保存
+          </Button>
+        ] : [
+          <Button key="edit" type="primary" onClick={() => setIsEditing(true)}>
+            编辑
+          </Button>
+        ]}
         destroyOnClose
       >
         {previewLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
             <LoadingOutlined style={{ fontSize: 24 }} spin />
           </div>
+        ) : isEditing ? (
+          <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', height: '60vh' }}>
+            <Editor
+              height="60vh"
+              defaultLanguage="yaml"
+              value={editContent}
+              onChange={(value) => setEditContent(value || '')}
+              theme="vs-light"
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 14,
+                tabSize: 2,
+                wordWrap: 'on',
+                automaticLayout: true
+              }}
+              loading={<div>加载中...</div>}
+              beforeMount={(monaco) => {
+                monaco.editor.defineTheme('vs-light', {
+                  base: 'vs',
+                  inherit: true,
+                  rules: [],
+                  colors: {}
+                });
+              }}
+            />
+          </div>
         ) : (
           <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
             <SyntaxHighlighter
-              language={getFileType(previewFileName)}
+              language="yaml"
               style={docco}
               customStyle={{
                 margin: 0,
