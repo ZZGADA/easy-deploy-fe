@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert, Row, Col, Form } from 'antd';
-import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined, RocketOutlined } from '@ant-design/icons';
 import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService } from '../services/api';
 import { WebSocketK8sService, K8sWsResponse } from '../services/websocketK8s';
 import { useNavigate } from 'react-router-dom';
@@ -131,13 +131,23 @@ const KubernetesDeploy: React.FC = () => {
       setWsStatus('connecting');
       const service = new WebSocketK8sService(token);
       service.setMessageCallback((response: K8sWsResponse) => {
-        if (response.success && response.data) {
-          const { command, result } = response.data;
-          setWsMessages(prev => [...prev, { command, result }]);
+        const data = response.data;
+        if (response.success && data && typeof data.command === 'string' && typeof data.result === 'string') {
+          setWsMessages(prev => [...prev, {
+            command: data.command,
+            result: data.result
+          }]);
           setWsStatus('connected');
         } else {
-          message.error(response.message || '命令执行失败');
-          setWsStatus('failed');
+          // 处理错误消息，但不断开连接
+          setWsMessages(prev => [...prev, {
+            command: '系统提示',
+            result: response.message || '命令执行失败'
+          }]);
+          // 只有在连接失败时才设置状态为 failed
+          if (wsStatus === 'connecting') {
+            setWsStatus('failed');
+          }
         }
       });
       setWsService(service);
@@ -443,6 +453,31 @@ const KubernetesDeploy: React.FC = () => {
     }
   };
 
+  // 处理资源部署
+  const handleDeployResource = async (resource: K8sResource) => {
+    // 检查 WebSocket 连接状态
+    if (!wsService || wsStatus !== 'connected') {
+      setWsMessages(prev => [...prev, {
+        command: '系统提示',
+        result: '请先点击下方的"远程连接"按钮建立连接，然后再进行部署操作。'
+      }]);
+      return;
+    }
+
+    try {
+      // 发送部署命令
+      wsService.sendCommand('kubectl apply -f', {
+        k8s_resource_id: resource.id
+      });
+    } catch (error) {
+      console.error('部署失败:', error);
+      setWsMessages(prev => [...prev, {
+        command: '系统提示',
+        result: '部署失败：' + (error instanceof Error ? error.message : String(error))
+      }]);
+    }
+  };
+
   // 配置列表列定义
   const columns = [
     {
@@ -483,14 +518,23 @@ const KubernetesDeploy: React.FC = () => {
       title: '操作',
       key: 'action',
       render: (_: any, record: K8sResource) => (
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => handleDeleteResource(record.id)}
-        >
-          删除
-        </Button>
+        <Space>
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            onClick={() => handleDeployResource(record)}
+          >
+            部署
+          </Button>
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDeleteResource(record.id)}
+          >
+            删除
+          </Button>
+        </Space>
       )
     }
   ];

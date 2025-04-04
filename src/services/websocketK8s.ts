@@ -1,9 +1,12 @@
 import { message } from 'antd';
 
 export interface K8sWsRequest {
-  step: 'init' | 'connected' | 'close';
+  step: string;
   command: string;
-  data: Record<string, any>;
+  data?: {
+    k8s_resource_id?: number;
+    [key: string]: any;
+  };
 }
 
 export interface K8sWsData {
@@ -71,17 +74,17 @@ export class WebSocketK8sService {
     this.messageCallback = callback;
   }
 
-  public sendCommand(command: string) {
-    if (!command.startsWith('kubectl')) {
-      message.error('只允许使用 kubectl 开头的命令');
-      return;
+  public sendCommand(command: string, data?: K8sWsRequest['data']) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const request: K8sWsRequest = {
+        step: 'connected',
+        command,
+        data
+      };
+      this.ws.send(JSON.stringify(request));
+    } else {
+      console.error('WebSocket is not connected');
     }
-
-    this.sendMessage({
-      step: 'connected',
-      command,
-      data: {}
-    });
   }
 
   private sendMessage(request: K8sWsRequest) {
