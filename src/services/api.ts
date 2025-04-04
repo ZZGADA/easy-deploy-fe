@@ -556,4 +556,39 @@ export const ossAccountService = {
     });
     return response.data;
   },
+};
+
+// K8s 资源操作记录接口
+export interface K8sResourceOperationLog {
+  id: number;
+  k8s_resource_id: number;
+  user_id: number;
+  namespace: string;
+  metadata_name: string;
+  metadata_labels: string;
+  operation_type: string;
+  command: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface K8sResourceOperationLogResponse {
+  code: number;
+  message: string;
+  logs: K8sResourceOperationLog[];
+}
+
+export const k8sResourceOperationLogService = {
+  // 查询 K8s 资源操作日志
+  queryOperationLogs: async (k8sResourceId: number): Promise<K8sResourceOperationLogResponse> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/user/k8s/resource/operation/log/query', {
+      params: { k8s_resource_id: k8sResourceId },
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  }
 }; 

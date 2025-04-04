@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert, Row, Col, Form } from 'antd';
-import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined, RocketOutlined } from '@ant-design/icons';
-import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService } from '../services/api';
+import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined, RocketOutlined, HistoryOutlined, StopOutlined } from '@ant-design/icons';
+import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService, k8sResourceOperationLogService, K8sResourceOperationLog } from '../services/api';
 import { WebSocketK8sService, K8sWsResponse } from '../services/websocketK8s';
 import { useNavigate } from 'react-router-dom';
 import OSS from 'ali-oss';
@@ -54,6 +54,11 @@ const KubernetesDeploy: React.FC = () => {
   const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const token = localStorage.getItem('token') || '';
+  const [editorReady, setEditorReady] = useState(false);
+  const [operationLogsModalVisible, setOperationLogsModalVisible] = useState(false);
+  const [currentResourceId, setCurrentResourceId] = useState<number | null>(null);
+  const [operationLogs, setOperationLogs] = useState<K8sResourceOperationLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // 初始化 OSS 客户端
   const initOssClient = async () => {
@@ -368,6 +373,7 @@ const KubernetesDeploy: React.FC = () => {
       setPreviewResourceType(type);
       setPreviewOssUrl(url);
       setIsEditing(false);
+      setEditorReady(false);
       
       // 从 URL 中提取 object-name
       const objectName = url.split('/').slice(-3).join('/');
@@ -478,6 +484,56 @@ const KubernetesDeploy: React.FC = () => {
     }
   };
 
+  // 处理资源停止运行
+  const handleStopResource = async (resource: K8sResource) => {
+    // 检查 WebSocket 连接状态
+    if (!wsService || wsStatus !== 'connected') {
+      setWsMessages(prev => [...prev, {
+        command: '系统提示',
+        result: '请先点击下方的"远程连接"按钮建立连接，然后再进行停止操作。'
+      }]);
+      return;
+    }
+
+    try {
+      // 发送停止命令
+      wsService.sendCommand('kubectl delete', {
+        k8s_resource_id: resource.id
+      });
+    } catch (error) {
+      console.error('停止失败:', error);
+      setWsMessages(prev => [...prev, {
+        command: '系统提示',
+        result: '停止失败：' + (error instanceof Error ? error.message : String(error))
+      }]);
+    }
+  };
+
+  // 获取 K8s 资源操作日志
+  const fetchOperationLogs = async (resourceId: number) => {
+    try {
+      setLoadingLogs(true);
+      const response = await k8sResourceOperationLogService.queryOperationLogs(resourceId);
+      if (response.code === 200) {
+        setOperationLogs(response.logs);
+      } else {
+        message.error('获取操作日志失败');
+      }
+    } catch (error) {
+      console.error('获取操作日志失败:', error);
+      message.error('获取操作日志失败');
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // 处理操作记录按钮点击
+  const handleOperationLogClick = (resourceId: number) => {
+    setCurrentResourceId(resourceId);
+    setOperationLogsModalVisible(true);
+    fetchOperationLogs(resourceId);
+  };
+
   // 配置列表列定义
   const columns = [
     {
@@ -527,12 +583,27 @@ const KubernetesDeploy: React.FC = () => {
             部署
           </Button>
           <Button
+            type="primary"
+            danger
+            icon={<StopOutlined />}
+            onClick={() => handleStopResource(record)}
+          >
+            停止
+          </Button>
+          <Button
             type="text"
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDeleteResource(record.id)}
           >
             删除
+          </Button>
+          <Button
+            type="link"
+            icon={<HistoryOutlined />}
+            onClick={() => handleOperationLogClick(record.id)}
+          >
+            操作记录
           </Button>
         </Space>
       )
@@ -562,6 +633,15 @@ const KubernetesDeploy: React.FC = () => {
       executeCommand(customCommand.trim());
       setCustomCommand('');
     }
+  };
+
+  // 处理编辑器挂载
+  const handleEditorDidMount = (editor: any) => {
+    // 确保编辑器在挂载后正确布局
+    setTimeout(() => {
+      editor.layout();
+      setEditorReady(true);
+    }, 300);
   };
 
   return (
@@ -914,6 +994,7 @@ const KubernetesDeploy: React.FC = () => {
             icon={<SaveOutlined />} 
             onClick={handleSaveEdit}
             loading={previewLoading}
+            disabled={!editorReady}
           >
             保存
           </Button>
@@ -930,6 +1011,11 @@ const KubernetesDeploy: React.FC = () => {
           </div>
         ) : isEditing ? (
           <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', height: '60vh' }}>
+            {!editorReady && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <LoadingOutlined style={{ fontSize: 24 }} spin />
+              </div>
+            )}
             <Editor
               height="60vh"
               defaultLanguage="yaml"
@@ -942,7 +1028,12 @@ const KubernetesDeploy: React.FC = () => {
                 fontSize: 14,
                 tabSize: 2,
                 wordWrap: 'on',
-                automaticLayout: true
+                automaticLayout: true,
+                renderWhitespace: 'none',
+                lineNumbers: 'on',
+                folding: true,
+                lineDecorationsWidth: 10,
+                lineNumbersMinChars: 3
               }}
               loading={<div>加载中...</div>}
               beforeMount={(monaco) => {
@@ -953,6 +1044,7 @@ const KubernetesDeploy: React.FC = () => {
                   colors: {}
                 });
               }}
+              onMount={handleEditorDidMount}
             />
           </div>
         ) : (
@@ -969,6 +1061,85 @@ const KubernetesDeploy: React.FC = () => {
               {previewContent}
             </SyntaxHighlighter>
           </div>
+        )}
+      </Modal>
+
+      {/* 操作记录弹窗 */}
+      <Modal
+        title="操作记录"
+        open={operationLogsModalVisible}
+        onCancel={() => setOperationLogsModalVisible(false)}
+        width={1000}
+        footer={[
+          <Button key="close" onClick={() => setOperationLogsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+      >
+        {loadingLogs ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+            <LoadingOutlined style={{ fontSize: 24 }} spin />
+          </div>
+        ) : operationLogs.length > 0 ? (
+          <Table
+            dataSource={operationLogs}
+            rowKey="id"
+            pagination={false}
+            scroll={{ x: 900 }}
+            columns={[
+              {
+                title: '操作类型',
+                dataIndex: 'operation_type',
+                key: 'operation_type',
+                width: 100,
+                render: (type: string) => (
+                  <Tag color={type === 'create' ? 'green' : 'blue'}>
+                    {type === 'create' ? '创建' : type}
+                  </Tag>
+                )
+              },
+              {
+                title: '命名空间',
+                dataIndex: 'namespace',
+                key: 'namespace',
+                width: 120
+              },
+              {
+                title: '资源名称',
+                dataIndex: 'metadata_name',
+                key: 'metadata_name',
+                width: 150
+              },
+              {
+                title: '资源标签',
+                dataIndex: 'metadata_labels',
+                key: 'metadata_labels',
+                width: 200,
+                render: (labels: string) => (
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{labels}</pre>
+                )
+              },
+              {
+                title: '执行命令',
+                dataIndex: 'command',
+                key: 'command',
+                render: (command: string) => (
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', backgroundColor: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
+                    {command}
+                  </pre>
+                )
+              },
+              {
+                title: '操作时间',
+                dataIndex: 'created_at',
+                key: 'created_at',
+                width: 180,
+                render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+              }
+            ]}
+          />
+        ) : (
+          <Alert message="暂无操作记录" type="info" />
         )}
       </Modal>
     </div>
