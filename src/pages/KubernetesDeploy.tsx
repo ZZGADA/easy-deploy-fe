@@ -62,6 +62,8 @@ const KubernetesDeploy: React.FC = () => {
   const [totalLogs, setTotalLogs] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [deployingResources, setDeployingResources] = useState<number[]>([]);
+  const [stoppingResources, setStoppingResources] = useState<number[]>([]);
 
   // 初始化 OSS 客户端
   const initOssClient = async () => {
@@ -193,6 +195,15 @@ const KubernetesDeploy: React.FC = () => {
       setWsMessages([]);
     }
   };
+
+  // 监听 WebSocket 消息，清除部署和停止状态
+  useEffect(() => {
+    if (wsMessages.length > 0) {
+      // 只要收到任何消息，就清除所有等待状态
+      setDeployingResources([]);
+      setStoppingResources([]);
+    }
+  }, [wsMessages]);
 
   // 渲染加载状态
   if (ossLoading) {
@@ -474,16 +485,26 @@ const KubernetesDeploy: React.FC = () => {
     }
 
     try {
+      // 设置部署状态
+      setDeployingResources(prev => [...prev, resource.id]);
+      
       // 发送部署命令
       wsService.sendCommand('kubectl apply -f', {
         k8s_resource_id: resource.id
       });
+      
+      // 设置超时，如果 30 秒内没有响应，则清除部署状态
+      setTimeout(() => {
+        setDeployingResources(prev => prev.filter(id => id !== resource.id));
+      }, 15000);
     } catch (error) {
       console.error('部署失败:', error);
       setWsMessages(prev => [...prev, {
         command: '系统提示',
         result: '部署失败：' + (error instanceof Error ? error.message : String(error))
       }]);
+      // 清除部署状态
+      setDeployingResources(prev => prev.filter(id => id !== resource.id));
     }
   };
 
@@ -499,16 +520,26 @@ const KubernetesDeploy: React.FC = () => {
     }
 
     try {
+      // 设置停止状态
+      setStoppingResources(prev => [...prev, resource.id]);
+      
       // 发送停止命令
       wsService.sendCommand('kubectl delete', {
         k8s_resource_id: resource.id
       });
+      
+      // 设置超时，如果 30 秒内没有响应，则清除停止状态
+      setTimeout(() => {
+        setStoppingResources(prev => prev.filter(id => id !== resource.id));
+      }, 30000);
     } catch (error) {
       console.error('停止失败:', error);
       setWsMessages(prev => [...prev, {
         command: '系统提示',
         result: '停止失败：' + (error instanceof Error ? error.message : String(error))
       }]);
+      // 清除停止状态
+      setStoppingResources(prev => prev.filter(id => id !== resource.id));
     }
   };
 
@@ -633,6 +664,7 @@ const KubernetesDeploy: React.FC = () => {
             type="primary"
             icon={<RocketOutlined />}
             onClick={() => handleDeployResource(record)}
+            loading={deployingResources.includes(record.id)}
           >
             部署
           </Button>
@@ -641,6 +673,7 @@ const KubernetesDeploy: React.FC = () => {
             danger
             icon={<StopOutlined />}
             onClick={() => handleStopResource(record)}
+            loading={stoppingResources.includes(record.id)}
           >
             停止
           </Button>
@@ -696,6 +729,11 @@ const KubernetesDeploy: React.FC = () => {
       editor.layout();
       setEditorReady(true);
     }, 300);
+  };
+
+  // 处理清除消息
+  const handleClearMessages = () => {
+    setWsMessages([]);
   };
 
   return (
@@ -885,7 +923,7 @@ const KubernetesDeploy: React.FC = () => {
                     value={customCommand}
                     onChange={(e) => setCustomCommand(e.target.value)}
                     onPressEnter={handleCommandSubmit}
-                    style={{ width: 'calc(100% - 100px)' }}
+                    style={{ width: 'calc(100% - 160px)' }}
                   />
                   <Button
                     type="primary"
@@ -893,6 +931,13 @@ const KubernetesDeploy: React.FC = () => {
                     onClick={handleCommandSubmit}
                   >
                     执行
+                  </Button>
+                  <Button
+                    type="default"
+                    icon={<DeleteOutlined />}
+                    onClick={handleClearMessages}
+                  >
+                    清除
                   </Button>
                 </Space.Compact>
 
