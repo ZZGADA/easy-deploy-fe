@@ -74,6 +74,10 @@ export class WebSocketK8sService {
     this.messageCallback = callback;
   }
 
+  public getMessageCallback(): ((response: K8sWsResponse) => void) | null {
+    return this.messageCallback;
+  }
+
   public sendCommand(command: string, data?: K8sWsRequest['data']) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       const request: K8sWsRequest = {

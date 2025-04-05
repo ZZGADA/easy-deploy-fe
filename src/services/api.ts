@@ -567,6 +567,7 @@ export interface K8sResourceOperationLog {
   metadata_name: string;
   metadata_labels: string;
   operation_type: string;
+  status: number;
   command: string;
   created_at: string;
   updated_at: string;
@@ -577,14 +578,21 @@ export interface K8sResourceOperationLogResponse {
   code: number;
   message: string;
   logs: K8sResourceOperationLog[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export const k8sResourceOperationLogService = {
   // 查询 K8s 资源操作日志
-  queryOperationLogs: async (k8sResourceId: number): Promise<K8sResourceOperationLogResponse> => {
+  queryOperationLogs: async (k8sResourceId: number, page: number = 1, pageSize: number = 5): Promise<K8sResourceOperationLogResponse> => {
     const token = localStorage.getItem('token');
     const response = await api.get('/api/user/k8s/resource/operation/log/query', {
-      params: { k8s_resource_id: k8sResourceId },
+      params: { 
+        k8s_resource_id: k8sResourceId,
+        page: page,
+        page_size: pageSize
+      },
       headers: {
         'Authorization': `${token}`
       }

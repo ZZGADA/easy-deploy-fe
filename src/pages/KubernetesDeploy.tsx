@@ -59,6 +59,9 @@ const KubernetesDeploy: React.FC = () => {
   const [currentResourceId, setCurrentResourceId] = useState<number | null>(null);
   const [operationLogs, setOperationLogs] = useState<K8sResourceOperationLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
 
   // 初始化 OSS 客户端
   const initOssClient = async () => {
@@ -510,12 +513,15 @@ const KubernetesDeploy: React.FC = () => {
   };
 
   // 获取 K8s 资源操作日志
-  const fetchOperationLogs = async (resourceId: number) => {
+  const fetchOperationLogs = async (resourceId: number, page: number = 1, pageSize: number = 5) => {
     try {
       setLoadingLogs(true);
-      const response = await k8sResourceOperationLogService.queryOperationLogs(resourceId);
+      const response = await k8sResourceOperationLogService.queryOperationLogs(resourceId, page, pageSize);
       if (response.code === 200) {
         setOperationLogs(response.logs);
+        setTotalLogs(response.total);
+        setCurrentPage(page);
+        setPageSize(pageSize);
       } else {
         message.error('获取操作日志失败');
       }
@@ -532,6 +538,54 @@ const KubernetesDeploy: React.FC = () => {
     setCurrentResourceId(resourceId);
     setOperationLogsModalVisible(true);
     fetchOperationLogs(resourceId);
+  };
+
+  // 处理分页变化
+  const handlePageChange = (page: number, pageSize: number) => {
+    if (currentResourceId) {
+      fetchOperationLogs(currentResourceId, page, pageSize);
+    }
+  };
+
+  // 获取状态文本
+  const getStatusText = (status: number) => {
+    switch (status) {
+      case 1:
+        return '运行正常';
+      case 2:
+        return '运行停止';
+      case 3:
+        return '容器重启';
+      default:
+        return '未知状态';
+    }
+  };
+
+  // 获取状态标签颜色
+  const getStatusColor = (status: number) => {
+    switch (status) {
+      case 1:
+        return 'green';
+      case 2:
+        return 'red';
+      case 3:
+        return 'orange';
+      default:
+        return 'default';
+    }
+  };
+
+  // 获取操作类型标签颜色
+  const getOperationTypeColor = (operationType: string, status: number) => {
+    if (status === 2) {
+      return 'red';
+    }
+    
+    if (status === 3) {
+      return operationType === 'delete' ? 'red' : 'orange';
+    }
+    
+    return operationType === 'delete' ? 'red' : operationType === 'create' ? 'green' : 'blue';
   };
 
   // 配置列表列定义
@@ -1070,6 +1124,8 @@ const KubernetesDeploy: React.FC = () => {
         open={operationLogsModalVisible}
         onCancel={() => setOperationLogsModalVisible(false)}
         width={1000}
+        style={{ top: 20 }}
+        bodyStyle={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}
         footer={[
           <Button key="close" onClick={() => setOperationLogsModalVisible(false)}>
             关闭
@@ -1084,17 +1140,37 @@ const KubernetesDeploy: React.FC = () => {
           <Table
             dataSource={operationLogs}
             rowKey="id"
-            pagination={false}
-            scroll={{ x: 900 }}
+            pagination={{
+              current: currentPage,
+              pageSize: pageSize,
+              total: totalLogs,
+              onChange: handlePageChange,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`
+            }}
+            scroll={{ x: 900, y: 500 }}
+            size="small"
             columns={[
               {
                 title: '操作类型',
                 dataIndex: 'operation_type',
                 key: 'operation_type',
-                width: 100,
-                render: (type: string) => (
-                  <Tag color={type === 'create' ? 'green' : 'blue'}>
-                    {type === 'create' ? '创建' : type}
+                width: 80,
+                render: (type: string, record: K8sResourceOperationLog) => (
+                  <Tag color={getOperationTypeColor(type, record.status)}>
+                    {type === 'create' ? '创建' : type === 'delete' ? '删除' : '检查'}
+                  </Tag>
+                )
+              },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                key: 'status',
+                width: 80,
+                render: (status: number) => (
+                  <Tag color={getStatusColor(status)}>
+                    {getStatusText(status)}
                   </Tag>
                 )
               },
@@ -1102,21 +1178,21 @@ const KubernetesDeploy: React.FC = () => {
                 title: '命名空间',
                 dataIndex: 'namespace',
                 key: 'namespace',
-                width: 120
+                width: 100
               },
               {
                 title: '资源名称',
                 dataIndex: 'metadata_name',
                 key: 'metadata_name',
-                width: 150
+                width: 120
               },
               {
                 title: '资源标签',
                 dataIndex: 'metadata_labels',
                 key: 'metadata_labels',
-                width: 200,
+                width: 150,
                 render: (labels: string) => (
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{labels}</pre>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '12px' }}>{labels}</pre>
                 )
               },
               {
@@ -1124,7 +1200,16 @@ const KubernetesDeploy: React.FC = () => {
                 dataIndex: 'command',
                 key: 'command',
                 render: (command: string) => (
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', backgroundColor: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
+                  <pre style={{ 
+                    margin: 0, 
+                    whiteSpace: 'pre-wrap', 
+                    backgroundColor: '#f5f5f5', 
+                    padding: '4px 8px', 
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    maxHeight: '60px',
+                    overflow: 'auto'
+                  }}>
                     {command}
                   </pre>
                 )
@@ -1133,7 +1218,7 @@ const KubernetesDeploy: React.FC = () => {
                 title: '操作时间',
                 dataIndex: 'created_at',
                 key: 'created_at',
-                width: 180,
+                width: 150,
                 render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss')
               }
             ]}
