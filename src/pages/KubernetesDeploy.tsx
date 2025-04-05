@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert, Row, Col, Form } from 'antd';
+import { List, Card, Typography, Space, Tag, Button, Select, message, Modal, Input, Table, Alert, Row, Col, Form, Popover } from 'antd';
 import { GithubOutlined, ReloadOutlined, DeploymentUnitOutlined, ApiOutlined, DeleteOutlined, LoadingOutlined, PlayCircleOutlined, SaveOutlined, RocketOutlined, HistoryOutlined, StopOutlined } from '@ant-design/icons';
 import { githubApi, githubService, dockerImageService, DockerImage, k8sResourceService, K8sResource, ossAccountService, k8sResourceOperationLogService, K8sResourceOperationLog } from '../services/api';
-import { WebSocketK8sService, K8sWsResponse } from '../services/websocketK8s';
+import { WebSocketK8sService, K8sWsResponse, K8sResourceInfo } from '../services/websocketK8s';
 import { useNavigate } from 'react-router-dom';
 import OSS from 'ali-oss';
 import dayjs from 'dayjs';
@@ -64,6 +64,8 @@ const KubernetesDeploy: React.FC = () => {
   const [pageSize, setPageSize] = useState(5);
   const [deployingResources, setDeployingResources] = useState<number[]>([]);
   const [stoppingResources, setStoppingResources] = useState<number[]>([]);
+  const [runningResources, setRunningResources] = useState<K8sResourceInfo[]>([]);
+  const [currentRedisKey, setCurrentRedisKey] = useState<string>('');
 
   // 初始化 OSS 客户端
   const initOssClient = async () => {
@@ -142,7 +144,7 @@ const KubernetesDeploy: React.FC = () => {
       const service = new WebSocketK8sService(token);
       service.setMessageCallback((response: K8sWsResponse) => {
         const data = response.data;
-        if (response.success && data && typeof data.command === 'string' && typeof data.result === 'string') {
+        if (response.success && data && typeof data === 'object' && 'command' in data && 'result' in data) {
           setWsMessages(prev => [...prev, {
             command: data.command,
             result: data.result
@@ -160,6 +162,17 @@ const KubernetesDeploy: React.FC = () => {
           }
         }
       });
+      
+      // 设置资源状态回调
+      service.setResourceStatusCallback((resources: K8sResourceInfo[]) => {
+        setRunningResources(resources);
+        // 如果有资源，保存redis_key
+        if (resources.length > 0) {
+          const redisKey = `k8s:running_resources:${resources[0].user_id}`;
+          setCurrentRedisKey(redisKey);
+        }
+      });
+      
       setWsService(service);
     }
   };
@@ -193,6 +206,9 @@ const KubernetesDeploy: React.FC = () => {
       setWsService(null);
       setWsStatus('disconnected');
       setWsMessages([]);
+      // 清空运行中的资源
+      setRunningResources([]);
+      setCurrentRedisKey('');
     }
   };
 
@@ -290,6 +306,9 @@ const KubernetesDeploy: React.FC = () => {
     setWsStatus('disconnected');
     setWsMessages([]);
     setCustomCommand('');
+    // 清空运行中的资源
+    setRunningResources([]);
+    setCurrentRedisKey('');
     
     const selectedRepository = repositories.find(r => r.name === repo);
     if (selectedRepository) {
@@ -736,6 +755,29 @@ const KubernetesDeploy: React.FC = () => {
     setWsMessages([]);
   };
 
+  // 处理资源操作
+  const handleResourceAction = (resource: K8sResourceInfo, action: 'get' | 'describe') => {
+    if (!wsService || wsStatus !== 'connected') {
+      setWsMessages(prev => [...prev, {
+        command: '系统提示',
+        result: '请先点击下方的"远程连接"按钮建立连接，然后再进行操作。'
+      }]);
+      return;
+    }
+    
+    const command = action === 'get' ? 'kubectl get' : 'kubectl describe';
+    const resourceType = resource.resource_type;
+    const resourceName = resource.resource_name;
+    const namespace = resource.namespace;
+    
+    // 发送命令
+    wsService.sendCommand(`${command}`, {
+      redis_key: currentRedisKey,
+      resource_type: resourceType,
+      resource_name: resourceName,
+    });
+  };
+
   return (
     <div style={{ display: 'flex', height: '100%' }}>
       {/* 左侧仓库列表 */}
@@ -902,6 +944,42 @@ const KubernetesDeploy: React.FC = () => {
               }
             >
               <Space direction="vertical" style={{ width: '100%' }}>
+                {/* 运行中的资源 */}
+                {runningResources.length > 0 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <Text strong>运行中的资源：</Text>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                      {runningResources.map((resource) => (
+                        <Popover
+                          key={`${resource.resource_id}-${resource.resource_name}`}
+                          content={
+                            <Space>
+                              <Button 
+                                size="small" 
+                                onClick={() => handleResourceAction(resource, 'get')}
+                              >
+                                Get
+                              </Button>
+                              <Button 
+                                size="small" 
+                                onClick={() => handleResourceAction(resource, 'describe')}
+                              >
+                                Describe
+                              </Button>
+                            </Space>
+                          }
+                          title="操作"
+                          trigger="hover"
+                        >
+                          <Tag color="green">
+                            namespace:{resource.namespace}, resource_name:{resource.resource_name}
+                          </Tag>
+                        </Popover>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 {/* 上层：常用命令按钮 */}
                 <Row gutter={[8, 8]}>
                   {commonCommands.map((cmd, index) => (

@@ -5,6 +5,9 @@ export interface K8sWsRequest {
   command: string;
   data?: {
     k8s_resource_id?: number;
+    redis_key?: string;
+    resource_type?: string;
+    resource_name?: string;
     [key: string]: any;
   };
 }
@@ -14,15 +17,31 @@ export interface K8sWsData {
   result: string;
 }
 
+export interface K8sResourceInfo {
+  resource_id: number;
+  resource_name: string;
+  resource_type: string;
+  namespace: string;
+  user_id: number;
+}
+
+export interface K8sResourceStatusData {
+  redis_key: string;
+  resources: K8sResourceInfo[];
+  timestamp: number;
+  type: string;
+}
+
 export interface K8sWsResponse {
   success: boolean;
   message: string;
-  data: K8sWsData | null;
+  data: K8sWsData | K8sResourceStatusData | null;
 }
 
 export class WebSocketK8sService {
   private ws: WebSocket | null = null;
   private messageCallback: ((response: K8sWsResponse) => void) | null = null;
+  private resourceStatusCallback: ((resources: K8sResourceInfo[]) => void) | null = null;
 
   constructor(token: string) {
     const wsUrl = `ws://localhost:53801/ws/k8s?token=${encodeURIComponent(token)}`;
@@ -45,7 +64,14 @@ export class WebSocketK8sService {
     this.ws.onmessage = (event) => {
       try {
         const response: K8sWsResponse = JSON.parse(event.data);
-        if (this.messageCallback) {
+        
+        // 处理资源状态消息
+        if (response.message === 'resource_status_running' && response.data && 'type' in response.data && response.data.type === 'resource_status') {
+          if (this.resourceStatusCallback) {
+            this.resourceStatusCallback(response.data.resources);
+          }
+        } else if (this.messageCallback) {
+          // 处理普通命令执行响应
           this.messageCallback(response);
         }
       } catch (error) {
@@ -72,6 +98,10 @@ export class WebSocketK8sService {
 
   public setMessageCallback(callback: (response: K8sWsResponse) => void) {
     this.messageCallback = callback;
+  }
+
+  public setResourceStatusCallback(callback: (resources: K8sResourceInfo[]) => void) {
+    this.resourceStatusCallback = callback;
   }
 
   public getMessageCallback(): ((response: K8sWsResponse) => void) | null {
