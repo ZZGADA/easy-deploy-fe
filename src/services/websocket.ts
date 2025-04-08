@@ -1,4 +1,5 @@
 import { message } from 'antd';
+import { env } from 'process';
 
 export interface WSMessage {
   docker_build_step: string
@@ -20,12 +21,13 @@ class WebSocketService {
     return new Promise((resolve, reject) => {
       try {
         const token = localStorage.getItem('token');
+        const wsDockerUrl = process.env.REACT_APP_WS_URL_DOCKER;
         if (!token) {
           reject(new Error('未找到认证令牌'));
           return;
         }
 
-        const wsUrl = `ws://localhost:53801/ws/docker?token=${encodeURIComponent(token)}`;
+        const wsUrl = `${wsDockerUrl}?token=${encodeURIComponent(token)}`;
         this.ws = new WebSocket(wsUrl);
         
         // 设置请求头

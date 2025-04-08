@@ -309,6 +309,8 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
 
   const renderBuildMessage = (message: BuildMessage) => {
     const { type, content } = message;
+
+    
     
     // 处理构建步骤消息
     if (content.includes('connect success')) {
@@ -343,6 +345,15 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
       );
     }
 
+    if (content.includes('docker logins  success')) {
+      return (
+        <div style={{ marginBottom: 8 }}>
+          <Tag color="orange">docker login 登陆成功</Tag>
+        </div>
+      );
+    }
+
+
     // 处理构建过程消息
     if (content.startsWith('#')) {
       return (
@@ -355,6 +366,10 @@ const ImageBuildModal: React.FC<ImageBuildModalProps> = ({
           {content}
         </div>
       );
+    }
+
+    if (content.includes('resource_status_running')) {
+      return null;
     }
 
     // 处理其他消息

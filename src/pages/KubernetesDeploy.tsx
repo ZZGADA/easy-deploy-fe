@@ -144,6 +144,23 @@ const KubernetesDeploy: React.FC = () => {
       const service = new WebSocketK8sService(token);
       service.setMessageCallback((response: K8sWsResponse) => {
         const data = response.data;
+        
+        // 过滤掉资源状态更新消息，不在消息展示框中显示
+        if (response.message === 'resource_status_running') {
+          // 只更新资源状态，不添加到消息列表
+          if (data && typeof data === 'object' && 'resources' in data) {
+            setRunningResources(data.resources);
+            // 如果有资源，保存redis_key
+            if (data.resources.length > 0) {
+              const redisKey = `k8s:running_resources:${data.resources[0].user_id}`;
+              setCurrentRedisKey(redisKey);
+            }
+          }
+          setWsStatus('connected');
+          return;
+        }
+        
+        // 处理其他消息
         if (response.success && data && typeof data === 'object' && 'command' in data && 'result' in data) {
           setWsMessages(prev => [...prev, {
             command: data.command,

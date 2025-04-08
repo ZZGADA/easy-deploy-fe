@@ -44,7 +44,8 @@ export class WebSocketK8sService {
   private resourceStatusCallback: ((resources: K8sResourceInfo[]) => void) | null = null;
 
   constructor(token: string) {
-    const wsUrl = `ws://localhost:53801/ws/k8s?token=${encodeURIComponent(token)}`;
+    const wsK8sUrl = process.env.REACT_APP_WS_URL_K8S;
+    const wsUrl = `${wsK8sUrl}?token=${encodeURIComponent(token)}`;
     this.initWebSocket(wsUrl);
   }
 
