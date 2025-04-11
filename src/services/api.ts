@@ -599,4 +599,106 @@ export const k8sResourceOperationLogService = {
     });
     return response.data;
   }
+};
+
+// 团队相关接口
+export interface Team {
+  id: number;
+  team_name: string;
+  team_description: string;
+  team_uuid: string;
+  creator_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamMember {
+  user_id: number;
+  user_email: string;
+  if_creator: boolean;
+}
+
+export interface TeamListResponse {
+  code: number;
+  message: string;
+  data: {
+    teams: Team[];
+    total: number;
+  };
+}
+
+export interface TeamRequest {
+  team_id: number;
+  request_type: 'join' | 'leave';
+}
+
+export interface CreateTeamRequest {
+  team_name: string;
+  team_description: string;
+}
+
+export const teamService = {
+  // 获取用户自己的团队信息
+  getSelfTeam: async (): Promise<{ code: number; message: string; data: Team }> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/team/info/self', {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 获取团队成员列表
+  getTeamMembers: async (teamId: number): Promise<{ code: number; message: string; data: TeamMember[] }> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/team/info/member', {
+      params: {
+        team_id: teamId
+      },
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 查询团队列表
+  queryTeams: async (page: number = 1, pageSize: number = 10, teamName?: string, teamUuid?: string): Promise<TeamListResponse> => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/team/list', {
+      params: {
+        page,
+        page_size: pageSize,
+        ...(teamName && { team_name: teamName }),
+        ...(teamUuid && { team_uuid: teamUuid })
+      },
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 创建团队申请
+  createTeamRequest: async (data: TeamRequest): Promise<{ code: number; message: string; data: any }> => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/team/request/create', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 创建团队
+  createTeam: async (data: CreateTeamRequest): Promise<{ code: number; message: string; data: Team }> => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/team/create', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
 }; 
