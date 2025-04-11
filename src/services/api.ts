@@ -613,6 +613,7 @@ export interface Team {
 }
 
 export interface TeamMember {
+  id: number;
   user_id: number;
   user_email: string;
   if_creator: boolean;

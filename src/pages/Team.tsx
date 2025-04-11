@@ -21,6 +21,7 @@ const TeamPage: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const [leaveLoading, setLeaveLoading] = useState<Record<number, boolean>>({}); // 新增状态，用于控制申请离开按钮的加载状态
 
   // 获取用户自己的团队信息
   const fetchSelfTeam = async () => {
@@ -59,13 +60,13 @@ const TeamPage: React.FC = () => {
 
   const [joinLoading, setJoinLoading] = useState(false); // 新增状态，用于控制按钮的加载状态
 
-  // 申请加入团队
-  const handleJoinTeam = async (teamId: number) => {
+  // 申请加入或离开团队
+  const handleJoinOrLeaveTeam = async (teamId: number, requestType: 0 | 1) => {
     setJoinLoading(true); // 设置按钮为加载状态
     try {
       await teamService.createTeamRequest({
         team_id: teamId,
-        request_type: 0
+        request_type: requestType
       });
       message.success('申请已发送');
     } catch (error) {
@@ -173,7 +174,7 @@ const TeamPage: React.FC = () => {
       title: '操作',
       key: 'action',
       render: (_: unknown, record: Team) => (
-        <Button type="primary" onClick={() => handleJoinTeam(record.id)} loading={joinLoading}>
+        <Button type="primary" onClick={() => handleJoinOrLeaveTeam(record.id,0)} loading={joinLoading}>
           申请加入
         </Button>
       ),
@@ -182,25 +183,35 @@ const TeamPage: React.FC = () => {
 
   const memberColumns = [
     {
-      title: '用户名',
-      dataIndex: 'user_name',
-      key: 'user_name',
+        title: '用户名',
+        dataIndex: 'user_name',
+        key: 'user_name'
     },
     {
-      title: '用户邮箱',
-      dataIndex: 'user_email',
-      key: 'user_email',
+        title: '用户邮箱',
+        dataIndex: 'user_email',
+        key: 'user_email'
     },
     {
-      title: '角色',
-      key: 'if_creator',
-      render: (_: unknown, record: TeamMember) => (
-        <Tag color={record.if_creator ? 'gold' : 'blue'}>
-          {record.if_creator ? '创建者' : '成员'}
-        </Tag>
-      ),
+        title: '角色',
+        key: 'if_creator',
+        render: (_: unknown, record: TeamMember) => (
+            <Tag color={record.if_creator ? 'gold' : 'blue'}>
+                {record.if_creator ? '创建者' : '成员'}
+            </Tag>
+        )
     },
-  ];
+    {
+        title: '操作',
+        key: 'leave',
+        render: (_: unknown, record: TeamMember) =>
+            !record.if_creator && (
+              <Button type="primary" onClick={() => handleJoinOrLeaveTeam(record.id,1)} loading={joinLoading}>
+              申请离开
+            </Button>
+            )
+    }
+];
 
   // 定义请求列表的列配置
   const requestColumns = [
