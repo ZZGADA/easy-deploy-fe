@@ -629,7 +629,7 @@ export interface TeamListResponse {
 
 export interface TeamRequest {
   team_id: number;
-  request_type: 'join' | 'leave';
+  request_type: 0 | 1;
 }
 
 export interface CreateTeamRequest {
@@ -701,4 +701,50 @@ export const teamService = {
     });
     return response.data;
   },
+
+
+  updateTeam: async (data: { id: number; team_name: string; team_description?: string }) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/team/update', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+  // 新增删除团队接口
+  deleteTeam: async (teamId: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/team/delete', { team_id: teamId }, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+   // 新增获取待审批请求列表接口
+   getTeamRequests: async (teamId: number) => {
+    const token = localStorage.getItem('token');
+    const response = await api.get('/api/team/request/list', {
+      params: {
+        team_id: teamId
+      },
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  },
+
+  // 新增审批请求接口
+  checkTeamRequest: async (data: { request_id: number; status: number }) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/team/request/check', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  }
 }; 

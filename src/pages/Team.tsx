@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Typography, Table, Button, message, Tabs, Input, Space, Tag, Modal, Form } from 'antd';
-import { RocketOutlined, SearchOutlined, PlusOutlined } from '@ant-design/icons';
+import { RocketOutlined, SearchOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { teamService } from '../services/api';
 import type { Team, TeamMember, TeamListResponse, CreateTeamRequest } from '../services/api';
 
@@ -57,16 +57,38 @@ const TeamPage: React.FC = () => {
     setLoading(false);
   };
 
+  const [joinLoading, setJoinLoading] = useState(false); // 新增状态，用于控制按钮的加载状态
+
   // 申请加入团队
   const handleJoinTeam = async (teamId: number) => {
+    setJoinLoading(true); // 设置按钮为加载状态
     try {
       await teamService.createTeamRequest({
         team_id: teamId,
-        request_type: 'join'
+        request_type: 0
       });
       message.success('申请已发送');
     } catch (error) {
-      message.error('申请失败');
+      // 处理后端返回的报错信息
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof error.response === 'object' &&
+        error.response !== null &&
+        'data' in error.response &&
+        typeof error.response.data === 'object' &&
+        error.response.data !== null &&
+        'message' in error.response.data
+      ) {
+        // 进行类型断言，确保 message 是 string 类型
+        const errorMessage = error.response.data.message as string;
+        message.error(errorMessage);
+      } else {
+        message.error('申请失败，请稍后重试');
+      }
+    } finally {
+      setJoinLoading(false); // 无论请求成功或失败，都将按钮的加载状态重置
     }
   };
 
@@ -83,10 +105,53 @@ const TeamPage: React.FC = () => {
     }
   };
 
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [showRequestCard, setShowRequestCard] = useState(true);
+
+  // 获取待审批请求列表
+  const fetchPendingRequests = async () => {
+    if (!selfTeam) return; // 如果用户没有加入团队，不获取待审批列表
+    setLoadingRequests(true);
+    try {
+      const response = await teamService.getTeamRequests(selfTeam.id);
+      if (response.code === 401) {
+        setShowRequestCard(false);
+        return;
+      }
+      setShowRequestCard(true);
+      setPendingRequests(response.data);
+    } catch (error) {
+      message.error('获取待审批请求列表失败');
+    }
+    setLoadingRequests(false);
+  };
+
+  // 审批请求
+  const handleCheckRequest = async (requestId: number, status: number) => {
+    try {
+      await teamService.checkTeamRequest({ request_id: requestId, status });
+      message.success('处理成功');
+      fetchPendingRequests(); // 刷新申请列表
+      if (selfTeam) {
+        const membersResponse = await teamService.getTeamMembers(selfTeam.id);
+        setTeamMembers(membersResponse.data);
+      }
+    } catch (error) {
+      message.error('处理失败');
+    }
+  };
+
   useEffect(() => {
     fetchSelfTeam();
     fetchTeams();
   }, [currentPage, pageSize]);
+
+  useEffect(() => {
+    if (selfTeam) {
+      fetchPendingRequests();
+    }
+  }, [selfTeam]);
 
   const columns = [
     {
@@ -108,7 +173,7 @@ const TeamPage: React.FC = () => {
       title: '操作',
       key: 'action',
       render: (_: unknown, record: Team) => (
-        <Button type="primary" onClick={() => handleJoinTeam(record.id)}>
+        <Button type="primary" onClick={() => handleJoinTeam(record.id)} loading={joinLoading}>
           申请加入
         </Button>
       ),
@@ -137,14 +202,66 @@ const TeamPage: React.FC = () => {
     },
   ];
 
+  // 定义请求列表的列配置
+  const requestColumns = [
+    {
+      title: 'GitHub ID',
+      dataIndex: 'github_id',
+      key: 'github_id',
+    },
+    {
+      title: 'GitHub 用户名',
+      dataIndex: 'github_name',
+      key: 'github_name',
+    },
+    {
+      title: '请求类型',
+      dataIndex: 'request_type',
+      key: 'request_type',
+      render: (type: number) => (
+        <Tag color={type === 0 ? 'blue' : 'gold'}>
+          {type === 0 ? '请求加入' : '请求离开'}
+        </Tag>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: any, record: any) => (
+        <Space size="middle">
+          <Button type="primary" onClick={() => handleCheckRequest(record.request_id, 1)}>
+            批准
+          </Button>
+          <Button danger onClick={() => handleCheckRequest(record.request_id, 2)}>
+            拒绝
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+  const [updateForm] = Form.useForm();
+  
   // 更新团队信息
   const handleUpdateTeam = async () => {
     if (selfTeam) {
+      updateForm.setFieldsValue({
+        team_name: selfTeam.team_name,
+        team_description: selfTeam.team_description
+      });
+      setIsUpdateModalVisible(true);
+    }
+  };
+  
+  const handleUpdateSubmit = async (values: { team_name: string; team_description: string }) => {
+    if (selfTeam) {
       try {
-        const { id, team_name, team_description } = selfTeam;
-        const response = await teamService.updateTeam({ id, team_name, team_description });
+        const { id } = selfTeam;
+        const response = await teamService.updateTeam({ id, ...values });
         if (response.code === 200) {
           message.success('更新成功');
+          setIsUpdateModalVisible(false);
           fetchSelfTeam(); // 刷新团队信息
         } else {
           message.error('更新失败');
@@ -155,11 +272,11 @@ const TeamPage: React.FC = () => {
     }
   };
   
-  // 注销团队
+  // 新增一个处理注销团队的函数
   const handleDeleteTeam = async () => {
     if (selfTeam) {
       try {
-        const response = await teamService.deleteTeam(selfTeam.id.toString());
+        const response = await teamService.deleteTeam(selfTeam.id);
         if (response.code === 200) {
           message.success('删除成功');
           setSelfTeam(null);
@@ -172,7 +289,7 @@ const TeamPage: React.FC = () => {
       }
     }
   };
-  
+
   return (
     <div style={{ padding: '24px' }}>
       {/* 用户自己的团队信息 */}
@@ -193,7 +310,8 @@ const TeamPage: React.FC = () => {
             <Button type="primary" onClick={handleUpdateTeam}>
               更新团队信息
             </Button>
-            <Button type="danger" onClick={handleDeleteTeam}>
+            {/* 修改 onClick 属性 */}
+            <Button danger onClick={handleDeleteTeam}>
               注销团队
             </Button>
           </Space>
@@ -283,6 +401,65 @@ const TeamPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 更新团队信息弹窗 */}
+      <Modal
+        title="更新团队信息"
+        open={isUpdateModalVisible}
+        onCancel={() => {
+          setIsUpdateModalVisible(false);
+          fetchSelfTeam(); // 窗口关闭后刷新页面
+        }}
+        onOk={() => updateForm.submit()}
+      >
+        <Form
+          form={updateForm}
+          onFinish={handleUpdateSubmit}
+          layout="vertical"
+        >
+          <Form.Item
+            name="team_name"
+            label="团队名称"
+            rules={[{ required: true, message: '请输入团队名称' }]}
+          >
+            <Input placeholder="请输入团队名称" />
+          </Form.Item>
+          <Form.Item
+            name="team_description"
+            label="团队描述"
+          >
+            <TextArea rows={4} placeholder="请输入团队描述" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>
+              更新
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+     
+      {/* 待审批请求模块 */}
+      {showRequestCard && (
+        <Card 
+          title="待审批请求"
+          extra={
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={fetchPendingRequests}
+              loading={loadingRequests}
+            >
+              刷新
+            </Button>
+          }
+        >
+          <Table
+            columns={requestColumns}
+            dataSource={pendingRequests}
+            rowKey="request_id"
+            loading={loadingRequests}
+          />
+        </Card>
+      )}
     </div>
   );
 };
