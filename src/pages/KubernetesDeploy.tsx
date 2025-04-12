@@ -152,7 +152,7 @@ const KubernetesDeploy: React.FC = () => {
             setRunningResources(data.resources);
             // 如果有资源，保存redis_key
             if (data.resources.length > 0) {
-              const redisKey = `k8s:running_resources:${data.resources[0].user_id}`;
+              const redisKey = data.redis_key;
               setCurrentRedisKey(redisKey);
             }
           }
@@ -181,11 +181,10 @@ const KubernetesDeploy: React.FC = () => {
       });
       
       // 设置资源状态回调
-      service.setResourceStatusCallback((resources: K8sResourceInfo[]) => {
+      service.setResourceStatusCallback((resources: K8sResourceInfo[],redisKey: string) => {
         setRunningResources(resources);
         // 如果有资源，保存redis_key
         if (resources.length > 0) {
-          const redisKey = `k8s:running_resources:${resources[0].user_id}`;
           setCurrentRedisKey(redisKey);
         }
       });

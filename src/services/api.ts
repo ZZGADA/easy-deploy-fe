@@ -394,8 +394,10 @@ export interface DockerImage {
   dockerfile_id: number;
   full_image_name: string;
   image_name: string;
+  dockerfile_name: string;
   created_at: string;
   updated_at: string;
+  user_name:  string;
 }
 
 export interface ApiResponse<T> {

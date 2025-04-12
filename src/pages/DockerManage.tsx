@@ -277,6 +277,7 @@ const DockerManage: React.FC = () => {
               </Space>
               <Space>
                 <Text type="secondary">镜像名称：{image.image_name}</Text>
+                <Text type="secondary">创建者：{image.user_name} </Text>
                 <Text type="secondary">
                   <ClockCircleOutlined /> 构建时间：{dayjs(image.created_at).format('YYYY-MM-DD HH:mm:ss')}
                 </Text>

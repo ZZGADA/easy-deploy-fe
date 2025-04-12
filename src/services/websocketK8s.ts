@@ -41,7 +41,7 @@ export interface K8sWsResponse {
 export class WebSocketK8sService {
   private ws: WebSocket | null = null;
   private messageCallback: ((response: K8sWsResponse) => void) | null = null;
-  private resourceStatusCallback: ((resources: K8sResourceInfo[]) => void) | null = null;
+  private resourceStatusCallback: ((resources: K8sResourceInfo[], redisKey: string) => void) | null = null;
 
   constructor(token: string) {
     const wsK8sUrl = process.env.REACT_APP_WS_URL_K8S;
@@ -69,7 +69,7 @@ export class WebSocketK8sService {
         // 处理资源状态消息
         if (response.message === 'resource_status_running' && response.data && 'type' in response.data && response.data.type === 'resource_status') {
           if (this.resourceStatusCallback) {
-            this.resourceStatusCallback(response.data.resources);
+            this.resourceStatusCallback(response.data.resources,response.data.redis_key);
           }
         } else if (this.messageCallback) {
           // 处理普通命令执行响应
@@ -101,7 +101,7 @@ export class WebSocketK8sService {
     this.messageCallback = callback;
   }
 
-  public setResourceStatusCallback(callback: (resources: K8sResourceInfo[]) => void) {
+  public setResourceStatusCallback(callback: (resources: K8sResourceInfo[],redisKey: string) => void) {
     this.resourceStatusCallback = callback;
   }
 
