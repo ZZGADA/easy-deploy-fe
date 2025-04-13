@@ -505,21 +505,25 @@ const Repositories: React.FC = () => {
           const newHref = href.replace('https://raw.githubusercontent.com', 'https://github.com');
           return newHref.replace('/raw/', '/blob/');
         }
+        // 处理绝对 http 链接
         if (href.startsWith('http')) {
           return href;
         }
-      
+    
         // 处理相对路径的链接
-        if (href.startsWith('./')) {
-          href = href.substring(2);
+        let processedHref = href;
+        if (processedHref.startsWith('./')) {
+          processedHref = processedHref.substring(2);
         }
-        if (href.startsWith('/')) {
-          href = href.substring(1);
+        if (processedHref.startsWith('/')) {
+          processedHref = processedHref.substring(1);
         }
         // 获取当前文件所在目录
         const currentDir = selectedFile.split('/').slice(0, -1).join('/');
-        const linkPath = currentDir ? `${currentDir}/${href}` : href;
-        return `https://raw.githubusercontent.com/${selectedRepo?.owner?.login}/${selectedRepo?.name}/${selectedBranch}/${linkPath}`;
+        const linkPath = currentDir ? `${currentDir}/${processedHref}` : processedHref;
+    
+        // 生成真实的 GitHub 源文件地址
+        return `https://github.com/${selectedRepo?.owner?.login}/${selectedRepo?.name}/blob/${selectedBranch}/${linkPath}`;
       };
       
       return (
@@ -577,9 +581,7 @@ const Repositories: React.FC = () => {
               ),
               // 自定义 a 标签组件
             a: ({ href, children, ...props }) => {
-              console.log('origin link:', href);
               const processedHref = processLinkUrl(href || '');
-              console.log('Opening link:', processedHref);
               return (
                 <a
                   href={processedHref}
