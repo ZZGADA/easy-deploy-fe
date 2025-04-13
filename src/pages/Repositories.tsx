@@ -19,6 +19,10 @@ interface Repository {
   updated_at: string;
   branches_url: string;
   html_url: string;
+  // 添加 owner 属性
+  owner: {
+    login: string;
+  };
 }
 
 interface Branch {
@@ -134,8 +138,9 @@ const Repositories: React.FC = () => {
   };
 
   const fetchRepositories = async () => {
-    try {
-      const response = await githubApi.get(`/users/${repositoryName}/repos`);
+     try {
+      // 修改请求端点为 /user/repos
+      const response = await githubApi.get(`/user/repos`);
       setRepositories(response.data);
     } catch (error: any) {
       if (error.response?.status !== 401) {
@@ -150,14 +155,15 @@ const Repositories: React.FC = () => {
   const fetchBranches = async (repoName: string) => {
     setBranchLoading(true);
     try {
-      const branchesResponse = await githubApi.get(`/repos/${repositoryName}/${repoName}/branches`);
+      const owner = selectedRepo?.owner?.login || repositoryName; 
+      const branchesResponse = await githubApi.get(`/repos/${owner}/${repoName}/branches`);
       const branchesData = branchesResponse.data;
-
+  
       const branchesWithCommits = await Promise.all(
         branchesData.map(async (branch: any) => {
           try {
             const commitResponse = await githubApi.get(
-              `/repos/${repositoryName}/${repoName}/commits/${branch.commit.sha}`
+              `/repos/${owner}/${repoName}/commits/${branch.commit.sha}`
             );
             return {
               ...branch,
@@ -172,7 +178,7 @@ const Repositories: React.FC = () => {
           }
         })
       );
-
+  
       setBranches(branchesWithCommits);
       // 设置默认分支
       setSelectedBranch(selectedRepo?.default_branch || branchesWithCommits[0]?.name);
@@ -188,16 +194,18 @@ const Repositories: React.FC = () => {
   const fetchFileTree = async (repoName: string, branch: string) => {
     setFileTreeLoading(true);
     try {
+      // 假设仓库信息中有 owner 字段，若没有需从仓库详情中获取
+      const owner = selectedRepo?.owner?.login || repositoryName; 
       // 使用 recursive 参数一次性获取所有文件
       const response = await githubApi.get(
-        `/repos/${repositoryName}/${repoName}/git/trees/${branch}`,
+        `/repos/${owner}/${repoName}/git/trees/${branch}`,
         { params: { recursive: 1 } }
       );
-
+  
       if (response.data.truncated) {
         message.warning('仓库文件过多，可能无法显示全部文件');
       }
-
+  
       const files = response.data.tree;
       
       // 构建文件树结构
@@ -240,13 +248,13 @@ const Repositories: React.FC = () => {
         // 返回顶层节点
         return Object.values(root).filter(node => !node.path?.includes('/'));
       };
-
+  
       const tree = buildFileTree(files);
       setFileTree(tree);
-
+  
       // 加载 README.md
       await loadReadme(files);
-
+  
     } catch (error: any) {
       console.error('Error fetching file tree:', error);
       message.error('获取文件列表失败：' + (error.response?.data?.message || '未知错误'));
@@ -274,8 +282,9 @@ const Repositories: React.FC = () => {
     if (!selectedRepo) return;
     
     try {
+      const owner = selectedRepo?.owner?.login; 
       const response = await githubApi.get(
-        `/repos/${repositoryName}/${selectedRepo.name}/commits`,
+        `/repos/${owner}/${selectedRepo.name}/commits`,
         { params: { path } }
       );
       
@@ -340,8 +349,9 @@ const Repositories: React.FC = () => {
     
     setFileContentLoading(true);
     try {
+      const owner = selectedRepo?.owner?.login; 
       const response = await githubApi.get(
-        `/repos/${repositoryName}/${selectedRepo.name}/contents/${path}`,
+        `/repos/${owner}/${selectedRepo.name}/contents/${path}`,
         { params: { ref: selectedBranch } }
       );
       
@@ -379,8 +389,9 @@ const Repositories: React.FC = () => {
     
     // 获取提交信息
     try {
+      const owner = selectedRepo?.owner?.login; 
       const commitResponse = await githubApi.get(
-        `/repos/${repositoryName}/${selectedRepo?.name}/commits`,
+        `/repos/${owner}/${selectedRepo?.name}/commits`,
         { 
           params: { 
             path: info.node.path,
@@ -396,7 +407,7 @@ const Repositories: React.FC = () => {
           date: lastCommit.commit.author.date,
           author: lastCommit.commit.author.name
         };
-
+  
         // 更新文件树中的提交信息
         const updateFileTreeWithCommit = (nodes: FileNode[]): FileNode[] => {
           return nodes.map(node => {
@@ -409,10 +420,10 @@ const Repositories: React.FC = () => {
             return node;
           });
         };
-
+  
         const updatedTree = updateFileTreeWithCommit([...fileTree]);
         setFileTree(updatedTree);
-
+  
         // 直接更新当前选中文件的提交信息
         const currentNode = info.node;
         currentNode.lastCommit = commitInfo;
@@ -482,8 +493,9 @@ const Repositories: React.FC = () => {
         // 获取当前文件所在目录
         const currentDir = selectedFile.split('/').slice(0, -1).join('/');
         const imagePath = currentDir ? `${currentDir}/${url}` : url;
-        
-        return `https://raw.githubusercontent.com/${repositoryName}/${selectedRepo?.name}/${selectedBranch}/${imagePath}`;
+
+        // 修改此处
+        return `https://raw.githubusercontent.com/${selectedRepo?.owner?.login}/${selectedRepo?.name}/${selectedBranch}/${imagePath}`;
       };
 
       return (
@@ -809,4 +821,4 @@ const Repositories: React.FC = () => {
   );
 };
 
-export default Repositories; 
+export default Repositories;
