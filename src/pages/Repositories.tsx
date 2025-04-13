@@ -497,7 +497,31 @@ const Repositories: React.FC = () => {
         // 修改此处
         return `https://raw.githubusercontent.com/${selectedRepo?.owner?.login}/${selectedRepo?.name}/${selectedBranch}/${imagePath}`;
       };
-
+      // 定义 processLinkUrl 函数
+      const processLinkUrl = (href: string) => {
+        console.log('Processing link:', href);
+        // 如果是 raw.githubusercontent.com 链接，转换为 github.com 链接
+        if (href.startsWith('https://raw.githubusercontent.com')) {
+          const newHref = href.replace('https://raw.githubusercontent.com', 'https://github.com');
+          return newHref.replace('/raw/', '/blob/');
+        }
+        if (href.startsWith('http')) {
+          return href;
+        }
+      
+        // 处理相对路径的链接
+        if (href.startsWith('./')) {
+          href = href.substring(2);
+        }
+        if (href.startsWith('/')) {
+          href = href.substring(1);
+        }
+        // 获取当前文件所在目录
+        const currentDir = selectedFile.split('/').slice(0, -1).join('/');
+        const linkPath = currentDir ? `${currentDir}/${href}` : href;
+        return `https://raw.githubusercontent.com/${selectedRepo?.owner?.login}/${selectedRepo?.name}/${selectedBranch}/${linkPath}`;
+      };
+      
       return (
         <div style={{ padding: '20px' }}>
           <MarkdownPreview 
@@ -550,7 +574,23 @@ const Repositories: React.FC = () => {
                   }}
                   {...props}
                 />
-              )
+              ),
+              // 自定义 a 标签组件
+            a: ({ href, children, ...props }) => {
+              console.log('origin link:', href);
+              const processedHref = processLinkUrl(href || '');
+              console.log('Opening link:', processedHref);
+              return (
+                <a
+                  href={processedHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  {...props}
+                >
+                  {children}
+                </a>
+              );
+            }
             }}
           />
         </div>
