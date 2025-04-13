@@ -718,7 +718,7 @@ const Profile: React.FC = () => {
         </Modal>
 
         {/* GitHub 开发者信息部分 */}
-        {githubInfo?.bound && (
+        {/* {githubInfo?.bound && (
           <>
             <Divider />
             <Card 
@@ -816,7 +816,7 @@ const Profile: React.FC = () => {
               </Form>
             </Card>
           </>
-        )}
+        )} */}
       </Card>
     </div>
   );
