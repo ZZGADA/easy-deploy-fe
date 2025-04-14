@@ -226,6 +226,7 @@ export interface DockerfileData {
   branch_name: string;
   file_name: string;
   file_data: DockerfileItem[];
+  shell_path: string;
 }
 
 interface QueryDockerfileParams {
@@ -750,4 +751,22 @@ export const teamService = {
     });
     return response.data;
   }
-}; 
+};
+
+// 新增查询 shell 文件路径的接口
+interface QueryShellPathParams {
+  dockerfile_id: number;
+}
+
+export const dockerShellService = {
+  // 保留保存 shell 文件路径的接口
+  saveShellPath: async (data: { dockerfile_id: number; shell_path: string }) => {
+    const token = localStorage.getItem('token');
+    const response = await api.post('/api/user/dockerfile/bind/shell/save', data, {
+      headers: {
+        'Authorization': `${token}`
+      }
+    });
+    return response.data;
+  }
+};

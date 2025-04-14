@@ -5,6 +5,8 @@ import { dockerfileService, DockerfileData, DockerfileItem, githubApi, githubSer
 import { useNavigate } from 'react-router-dom';
 import ImageBuildModal from '../components/ImageBuildModal';
 import dayjs from 'dayjs';
+import { dockerShellService } from '../services/api';
+import { Tooltip } from 'antd';
 
 const { Option } = Select;
 const { Title, Text, Paragraph } = Typography;
@@ -47,6 +49,8 @@ const DockerManage: React.FC = () => {
   const [isBuildModalVisible, setIsBuildModalVisible] = useState(false);
   const [selectedDockerfile, setSelectedDockerfile] = useState<DockerfileData | null>(null);
   const [dockerImages, setDockerImages] = useState<Record<number, DockerImage[]>>({});
+  const [shellPaths, setShellPaths] = useState<Record<number, string>>({});
+  const [editingShellPath, setEditingShellPath] = useState<{ id: number; path: string } | null>(null);
 
   // 获取开发者令牌和仓库列表
   useEffect(() => {
@@ -98,13 +102,42 @@ const DockerManage: React.FC = () => {
       });
 
       if (response.code === 200 && response.data) {
-        setDockerfiles(Array.isArray(response.data) ? response.data : []);
+        const newDockerfiles = Array.isArray(response.data) ? response.data : [];
+        setDockerfiles(newDockerfiles);
+
+        // 直接从返回的 dockerfile 数据中提取 shell_path
+        const newShellPaths: Record<number, string> = {};
+        newDockerfiles.forEach((dockerfile: DockerfileData) => {
+          if (dockerfile.shell_path) {
+            newShellPaths[dockerfile.id || 0] = dockerfile.shell_path;
+          }
+        });
+        setShellPaths(newShellPaths);
       } else {
         setDockerfiles([]);
+        setShellPaths({});
       }
     } catch (error) {
       message.error('获取 Dockerfile 列表失败');
       setDockerfiles([]);
+      setShellPaths({});
+    }
+  };
+
+  // 处理 shell 文件路径保存
+  const handleSaveShellPath = async (dockerfileId: number, path: string) => {
+    try {
+      await dockerShellService.saveShellPath({
+        dockerfile_id: dockerfileId,
+        shell_path: path
+      });
+      message.success('shell 文件路径保存成功');
+      // 保存成功后重新获取数据
+      await fetchDockerfiles(); 
+      // 关闭编辑状态
+      setEditingShellPath(null); 
+    } catch (error) {
+      message.error('shell 文件路径保存失败');
     }
   };
 
@@ -152,7 +185,8 @@ const DockerManage: React.FC = () => {
         repository_id: repositories.find(r => r.name === selectedRepo)?.id || '',
         branch_name: selectedBranch,
         file_name: values.fileName || 'Dockerfile',
-        file_data: fileData
+        file_data: fileData,
+        shell_path: '',
       };
 
       if (editingDockerfile) {
@@ -392,28 +426,55 @@ const DockerManage: React.FC = () => {
                           style={{ width: '100%', marginBottom: '16px' }}
                           extra={
                             <Space>
+                                {/* 新增查看和编辑 shell path 功能 */}
+                                {editingShellPath && editingShellPath.id === dockerfile.id ? (
+                                  <Space>
+                                    <Input
+                                      value={editingShellPath.path}
+                                      onChange={(e) =>
+                                        setEditingShellPath({
+                                          ...editingShellPath,
+                                          path: e.target.value
+                                        })
+                                      }
+                                      style={{ width: 200 }}
+                                    />
+                                    <Button onClick={() => handleSaveShellPath(dockerfile.id || 0, editingShellPath.path)}>
+                                      保存
+                                    </Button>
+                                    <Button onClick={() => setEditingShellPath(null)}>
+                                      取消
+                                    </Button>
+                                  </Space>
+                                ) : (
+                                  <Tooltip title={shellPaths[dockerfile.id || 0] || '请填写 shell 文件的相对路径'}>
+                                    <Button onClick={() => setEditingShellPath({ id: dockerfile.id || 0, path: shellPaths[dockerfile.id || 0] || '' })}>
+                                      查看 shell path
+                                    </Button>
+                                  </Tooltip>
+                                )}
                                 <Button
                                   icon={<BuildOutlined />}
                                   type="primary"
                                   onClick={() => handleBuild(dockerfile)}
-                              >
-                                镜像构建
-                              </Button>
-                              <Button
+                                >
+                                  镜像构建
+                                </Button>
+                                <Button
                                   icon={<EditOutlined />}
                                   onClick={() => handleEdit(dockerfile)}
-                              >
-                                修改
-                              </Button>
-                              <Button
+                                >
+                                  修改
+                                </Button>
+                                <Button
                                   icon={<DeleteOutlined />}
                                   danger
                                   onClick={() => handleDelete(dockerfile)}
-                              >
-                                删除
-                              </Button>
-                            </Space>
-                          }
+                                >
+                                  删除
+                                </Button>
+                              </Space>
+                            }
                       >
                         <Space direction="vertical" style={{ width: '100%' }}>
                           <pre style={{
@@ -615,4 +676,4 @@ const DockerManage: React.FC = () => {
   );
 };
 
-export default DockerManage; 
+export default DockerManage;
